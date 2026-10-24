@@ -94,7 +94,7 @@ verdict out, which the plugin runs against the rules every stack prints.
 | `tests/flows.yaml` | `[AfterTestRun]`; a run is whole when the scenarios that ran are every scenario of `tests/feature/`, read by the English keywords, `@ignore` left out |
 | `tests/surface.yaml` | Roslyn over the service's project, through `MSBuildWorkspace`, restored first; generated files, under `obj/` or named `.g.cs`, are read for their types — an NSwag controller's routes among them — and not walked for calls |
 | rules | rules/1 of the protocol: its `modes.yaml` embedded in the tool, the layout `init` lays out as classes, default areas and the service's own from `specrig.yaml`; `specrig.md` is the protocol's text with this stack's slots, rendered from the same table and from nothing `init` was told, and the service's own `AGENTS.md` brings it in with one line |
-| distribution | NuGet, not published yet; the tool in the service's local manifest, or run from a checkout |
+| distribution | NuGet, every package at one version, published by `.github/workflows/release.yml` for a tag `v<version>`; the tool in the service's local manifest, or run from a checkout |
 
 ## The first bus: RabbitMQ.Client
 

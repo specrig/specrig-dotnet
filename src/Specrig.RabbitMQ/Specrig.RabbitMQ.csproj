@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Events in and out over RabbitMQ.Client for the specrig harness, in process: what the service publishes is recorded, and a delivery is routed by the bindings the service made.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>

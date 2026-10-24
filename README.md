@@ -70,7 +70,7 @@ copy of which is in [protocol/](protocol).
 | `Specrig.Reqnroll` | binds the harness to Reqnroll: the step a record belongs to, the checks after a case, `tests/flows.yaml` after a run |
 | `Specrig.Postgres`, `Specrig.Redis` | resources: a real system, provisioned once per run and emptied before every case |
 | `Specrig.Surface` | the Roslyn pass behind `tests/surface.yaml` and `tests/checks.yaml` |
-| `specrig` | the dotnet tool: `init`, `surface`, `agents`, and `rules` of the protocol's rules/1 |
+| `Specrig.Tool` | the dotnet tool `specrig`: `init`, `surface`, `agents`, and `rules` of the protocol's rules/1 |
 
 ## Getting started
 
@@ -81,7 +81,7 @@ dotnet new tool-manifest
 ```
 
 ```bash
-dotnet tool install specrig
+dotnet tool install Specrig.Tool
 ```
 
 ```bash
@@ -167,8 +167,7 @@ docker run --rm -v "$REPO:$REPO" -v /var/run/docker.sock:/var/run/docker.sock \
   -w "$PWD" mcr.microsoft.com/dotnet/sdk:10.0 dotnet test tests
 ```
 
-The packages are not published yet. From a checkout of this repository, `init`
-run as
+Without the packages, from a checkout of this repository, `init` run as
 
 ```bash
 dotnet run --project ../specrig-dotnet/src/Specrig.Tool -- init . --backend billing=Billing:BaseUrl
@@ -577,7 +576,7 @@ make test
 
 The first rewrites the two samples' `tests/surface.yaml`, `tests/checks.yaml` and
 `specrig.md` through the tool. The second builds every project and runs the tests: the packages'
-own, the protocol's record, guard and agents fixtures in `protocol/fixtures/`, `surface`
+own, the protocol's record, marker and agents fixtures in `protocol/fixtures/`, `surface`
 and `init` over the gateway in `test/fixtures/gateway/` — NSwag-shaped controllers,
 neighbours over gRPC alone —, then the suites of the two samples in `samples/` —
 `shop`, a web API over Postgres serving and calling gRPC, and `reminders`, a worker
@@ -598,3 +597,9 @@ make protocol
 
 refreshes `protocol/` from a checkout of the protocol beside this one, `PROTOCOL` to
 name another; the tests then run against the new copy.
+
+Every package and the tool carry the one version in `src/Directory.Build.props`. A
+tag `v<version>` matching it runs the tests and publishes the packages to NuGet
+through `.github/workflows/release.yml`, which nuget.org trusts for this repository:
+no API key is kept, and the secret `NUGET_USER` names the nuget.org account that
+owns the packages.

@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Binds the specrig harness to Reqnroll: the step a record belongs to, the checks after a case, tests/flows.yaml after a run.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Reqnroll" />
   </ItemGroup>

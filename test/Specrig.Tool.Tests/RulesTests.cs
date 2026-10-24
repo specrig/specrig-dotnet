@@ -80,6 +80,12 @@ public class RulesTests
         Assert.False(areas["steps"].TryGetProperty("modes", out _));
     }
 
+    [Theory]
+    [InlineData("dotnet-tools.json")]
+    [InlineData(".config/dotnet-tools.json")]
+    public void The_tool_manifest_is_the_platform_s_wherever_the_sdk_keeps_it(string manifest) =>
+        Assert.Contains(manifest, Rules.Platform);
+
     [Fact]
     public void An_area_naming_a_mode_there_is_not_is_refused_by_name() =>
         Assert.Equal(

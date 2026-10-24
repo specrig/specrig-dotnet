@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>specrig</ToolCommandName>
-    <Version>0.1.0</Version>
+    <Description>The specrig dotnet tool: init lays a specification-first suite out beside a service; surface, agents and rules keep its records, its specrig.md and its modes current.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Specrig.Surface/Specrig.Surface.csproj" />

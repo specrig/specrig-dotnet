@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The specrig harness for any service on the Generic Host: boots Program, answers its settings, holds the resources and the grants, the clock and the logs, and runs jobs and commands.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

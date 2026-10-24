@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The core of specrig for .NET, independent of the host: the records, the contract check, the stand-ins.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Primitives" />
     <PackageReference Include="NJsonSchema" />

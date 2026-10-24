@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>A Quartz job run in a specrig case as the scheduler runs it, with the detail the service registered.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Quartz" />
   </ItemGroup>

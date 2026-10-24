@@ -59,7 +59,7 @@ Two roles, and this rule is written for the first one.
 | | owns | in this repository |
 |---|---|---|
 | the person writing the specification | the cases, the steps, the red-green loop | `tests/feature/`, `tests/steps/` |
-| the person who owns the platform | what a case may stand in for, and the harness | `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md` |
+| the person who owns the platform | what a case may stand in for, and the harness | `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `dotnet-tools.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md` |
 
 **You work for the first.** The platform is a given: read it, use it, and when it
 does not fit the case, say so and stop. Changing a seam to make a case pass
@@ -96,7 +96,7 @@ redgreen.
 | platform | the platform's files, and production code for a seam |
 | auto | `tests/feature/**/*.feature`, the steps and production code — anything but the platform's files |
 
-The platform's files are `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md`. `CONTRIBUTING.md` is edited in no mode.
+The platform's files are `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `dotnet-tools.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md`. `CONTRIBUTING.md` is edited in no mode.
 `tests/surface.yaml` and `tests/checks.yaml` are written by `dotnet run --project ../../src/Specrig.Tool -- surface`, `specrig.md` by `dotnet run --project ../../src/Specrig.Tool -- agents`, and the structure of `tests/flows.yaml` by every whole run of the suite, in any mode, and never by hand.
 
 An **area** is a named set of paths, open in its own modes or by a grant the human
@@ -428,7 +428,7 @@ that a link is present, not that anybody read anything.
 **What the diff must not carry.** Files a reviewer can check without reading
 anything else:
 
-- **the platform's files** — `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md`. Their presence means the task
+- **the platform's files** — `tests/internal/`, `tests/Specs.csproj`, `tests/reqnroll.json`, `dotnet-tools.json`, `.config/dotnet-tools.json`, `specrig.yaml`, `AGENTS.md`, `CLAUDE.md`. Their presence means the task
   granted itself the permissions it was working under.
 - **any production file**, outside auto mode. Red-green is a separate hand-over
   with a diff of its own; production code arriving together with the cases means

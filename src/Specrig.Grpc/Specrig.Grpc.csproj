@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>gRPC both ways for the specrig harness: a typed client to the service, and a neighbour stood in for by its service descriptor.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.Net.Client" />

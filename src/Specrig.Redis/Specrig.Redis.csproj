@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Redis as a specrig resource: a real server in a container, provisioned once per run and emptied before every case.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="Testcontainers.Redis" />

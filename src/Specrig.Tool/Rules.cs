@@ -55,7 +55,7 @@ static class Rules
     public const string Cases = "tests/feature/**/*.feature";
 
     public static readonly string[] Platform =
-        ["tests/internal/", "tests/Specs.csproj", "tests/reqnroll.json", ".config/dotnet-tools.json", "specrig.yaml", "AGENTS.md", "CLAUDE.md"];
+        ["tests/internal/", "tests/Specs.csproj", "tests/reqnroll.json", "dotnet-tools.json", ".config/dotnet-tools.json", "specrig.yaml", "AGENTS.md", "CLAUDE.md"];
 
     public static readonly Dictionary<string, string[]> Layout = new()
     {
