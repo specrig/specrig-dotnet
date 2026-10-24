@@ -36,7 +36,7 @@ copy of which is in [protocol/](protocol).
 - **Two records in specrig's format.** `tests/surface.yaml` is what the code can
   serve, consume, publish and call, read from the code. `tests/flows.yaml` is
   what the cases make the service send, step by step. A project's flow map reads
-  them beside its other services' records — `waffle flows` does.
+  them beside its other services' records — specrig-go's `flows` does.
 - **A protocol for the people and agents who write the cases.** `init` writes
   `specrig.md`, which holds an agent to the order: cases, approval, then code, and
   one line in the service's `AGENTS.md` brings it in; `specrig agents` rewrites it.

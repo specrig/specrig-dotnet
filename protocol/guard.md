@@ -38,8 +38,7 @@ not run: the plugin says so, and leaves the service's edits unchecked.
 ## Before rules
 
 A tool older than `rules` answers `Unknown command "rules"` and exits non-zero, and a
-plugin asks it the commands rules/1 replaced instead — waffle's tool still answers
-them:
+plugin asks it the commands rules/1 replaced instead:
 
 ```
 <tool> guard <mode> <path> [--grant <area>]...
@@ -162,8 +161,7 @@ holding a marker, and asks the tool the marker names:
 
 | marker | tool | asked |
 |---|---|---|
-| `specrig.yaml` with `guard` | its `guard`, as arguments: `[dotnet, specrig]`, `[npx, --no, specrig]` | `rules` |
-| `waffle.yaml` | `./waffle` where it is executable, else `go tool waffle` | `agents:rules`, and before it, `agents:guard`, `agents:mode`, `agents:grant` |
+| `specrig.yaml` with `guard` | its `guard`, as arguments: `[dotnet, specrig]`, `[npx, --no, specrig]`, `[go, tool, specrig]` | `rules` |
 
 A `specrig.yaml` without `guard` marks a service with no modes yet. The marker names
 the service's own tool, never one fetched: `npx` without `--no` would install

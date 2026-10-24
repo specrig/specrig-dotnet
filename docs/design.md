@@ -8,21 +8,21 @@ it cannot, what the owner decided, and the order it was built in.
 | | for | how it reaches the service | records |
 |---|---|---|---|
 | specrig-js | a web app | a browser, Playwright | the app's requests to its backends |
-| waffle | a Go service built with waffle | a harness generated from the service's DI container | inputs over gRPC, HTTP, events and commands, and what the service sends on |
-| specrig-dotnet | a .NET service on the Generic Host | the host `Program` builds, caught as it is built | the waffle kind, plus the outbound HTTP waffle does not trace |
+| specrig-go | a Go service | a harness generated from the service's DI container | inputs over gRPC, HTTP, events and commands, and what the service sends on |
+| specrig-dotnet | a .NET service on the Generic Host | the host `Program` builds, caught as it is built | specrig-go's kind, plus the outbound HTTP specrig-go does not trace |
 
-It is the waffle half without waffle: a standalone harness, like specrig-js, for a
-service whose layout it does not own. waffle can lean on knowing its own
-libraries and generating its own container; here the container is Microsoft's,
-built at run time, and the libraries are the service's choice. So what waffle
-reads off generated code, this reads off the running container or the code
-through Roslyn, and what waffle knows about gorib, this has to declare as a
+It is a standalone harness, like specrig-js, for a service whose layout it does
+not own. specrig-go can lean on a framework that generates the service's
+container from libraries it knows; here the container is Microsoft's, built at
+run time, and the libraries are the service's choice. So what specrig-go reads
+off generated code, this reads off the running container or the code through
+Roslyn, and what specrig-go knows about its libraries, this has to declare as a
 supported set and a list of limits.
 
 ## A host, not a server
 
-waffle is not an HTTP framework with extras: an application is a list of
-commands, and HTTP is one of them. The .NET shape that matches is the Generic
+A service is not an HTTP server with extras: it runs a list of commands, and
+HTTP is one of them. The .NET shape that matches is the Generic
 Host, not ASP.NET Core — ASP.NET Core is one hosted service in it, beside the
 consumers and workers, and a worker service has no server at all.
 `WebApplicationFactory` is therefore not the harness's base, only the model for
@@ -30,18 +30,18 @@ it: the harness catches the host `Program` builds through the hosting
 diagnostic events, the way `WebApplicationFactory` and `dotnet ef` do, and puts a
 test server in Kestrel's place only where there is one.
 
-| waffle | daemon | in a .NET service | in a case |
+| command | daemon | in a .NET service | in a case |
 |---|---|---|---|
-| `http` | yes | Kestrel, under `GenericWebHostService` | a test server in its place; `harness.Http` |
-| `grpc` | yes | Grpc.AspNetCore on the same server | a channel over the test server; `harness.Grpc<T>()` |
-| `scribus` | yes | a consumer: a hosted service that binds queues on a `RabbitMQ.Client` channel | runs over the bus stand-in's connection; `harness.Bus.Deliver` |
-| `outbox` | yes | a relay: a hosted service | stopped unless `Running` names it; the outbox row is what a `Then` reads |
-| `cron` | no — the scheduler | Quartz, Hangfire, a `PeriodicTimer` loop, a Kubernetes CronJob | stopped; a step runs the job |
-| `migrate`, a domain command | no | a job, or a verb `Program` takes | a step runs it: `harness.Run<T>()`, `harness.Command(...)` |
+| an HTTP server | yes | Kestrel, under `GenericWebHostService` | a test server in its place; `harness.Http` |
+| a gRPC server | yes | Grpc.AspNetCore on the same server | a channel over the test server; `harness.Grpc<T>()` |
+| an event consumer | yes | a hosted service that binds queues on a `RabbitMQ.Client` channel | runs over the bus stand-in's connection; `harness.Bus.Deliver` |
+| an outbox relay | yes | a hosted service | stopped unless `Running` names it; the outbox row is what a `Then` reads |
+| a scheduler | no — the scheduler | Quartz, Hangfire, a `PeriodicTimer` loop, a Kubernetes CronJob | stopped; a step runs the job |
+| a migration, a domain command | no | a job, or a verb `Program` takes | a step runs it: `harness.Run<T>()`, `harness.Command(...)` |
 
 ## The format comes first
 
-`waffle flows` joins services by the names in their records, so a .NET record that
+A flow map joins services by the names in their records, so a .NET record that
 names a call differently from its Go neighbour is a link lost without an error
 anyone reads as one. The names, as the two existing writers produce them:
 
@@ -60,7 +60,7 @@ anyone reads as one. The names, as the two existing writers produce them:
 The YAML itself has to match byte for byte too — key order, indentation, quoting,
 the sort by bytes — because CI compares a rewritten record with `git diff`.
 
-The format lived in two codebases and in waffle's `conventions/flows.md`. A third
+The format lived in two codebases and in the Go writer's `conventions/flows.md`. A third
 writer was the moment to write it down, and it now lives in the
 [specrig protocol](https://github.com/specrig/protocol) — the records, the modes,
 the rules and the text of `specrig.md` — with fixtures: a trace in, the record out,
@@ -101,7 +101,7 @@ verdict out, which the plugin runs against the rules every stack prints.
 An event is named by its routing key, as the Go services name it, and the
 exchange is not part of the name: `event orders.paid` is published by whoever
 publishes that key and consumed by whoever binds it. That is what lets
-`waffle flows` link a .NET consumer to a Go publisher, and back, with no
+a flow map link a .NET consumer to a Go publisher, and back, with no
 declaration on either side.
 
 | | |
@@ -119,7 +119,7 @@ declaration on either side.
 | the rest of `IChannel` | throws `NotSupportedException` naming the member, so a gap in the stand-in fails loudly instead of doing nothing |
 | `surface` | `publishes` at `BasicPublishAsync`'s routing key, `consumes` at `QueueBindAsync`'s, followed through constants, wrappers and their callers as the Go pass follows `Publish` and `QueueBind`; a key that is not a constant at the end is refused. A key bound with a wildcard is written as bound — `orders.*` — and the flow map reports what a wildcard alone takes, as it does for Go |
 
-Routing by the bindings is stricter than waffle, whose consumer recorder hands
+Routing by the bindings is stricter than specrig-go, whose consumer recorder hands
 every delivery to the handler and keeps the bindings only to be asserted on.
 Here a binding with a typo is a red case, and nothing has to remember to assert
 on it.
@@ -133,27 +133,27 @@ MassTransit is commercial from v9.
 
 **The Generic Host is the base.** A harness built on `WebApplicationFactory`
 would make every worker and consumer a second-class way in, which is the shape
-waffle refuses. `HostFactoryResolver` is the same mechanism without the server.
+specrig-go refuses. `HostFactoryResolver` is the same mechanism without the server.
 
-**Workers run when a step runs them.** In waffle a cron command runs when a step
+**Workers run when a step runs them.** In specrig-go a cron command runs when a step
 runs it, and nothing ticks in a component test. A .NET worker started with the
 host would wake at a moment no case chose and send what no step answered — a
 failure with a true message and no cause in the case. So the host starts without
 its workers, and `Running` names the few a handler depends on, which then wait on
 the harness's clock.
 
-**The bus is stood in for in process.** As waffle's recorders: what is published
+**The bus is stood in for in process.** As specrig-go's recorders: what is published
 is recorded, and a delivery goes through the consumer the container installed. A
 broker would add delivery timing that no case asserts on, and the semantics a
 broker adds between services — retries, ordering — are what the component cut
-removes by design, as waffle's `ai-native` says.
+removes by design, as specrig-go's `ai-native` says.
 
-**A container kept, a database per run.** waffle measured it: starting postgres
+**A container kept, a database per run.** specrig-go measured it: starting postgres
 takes about 2.6 s, creating a database and migrating it about 0.2 s. So the
 container outlives the run and the database does not, and the process id in its
 name is what lets two test projects run at once against one container — `dotnet
 test` over a solution runs them in parallel. A run killed before its end is
-cleaned up by the next one's sweep, as in waffle: a name of the shape, specrig's
+cleaned up by the next one's sweep, as in specrig-go: a name of the shape, specrig's
 mark over an hour old, nobody connected.
 
 **A case's fault is the case's.** `FailWith` lives on the case's own resource
@@ -169,13 +169,13 @@ emptied; building the host is measured before anybody trades isolation for it.
 **`Production`.** The pipeline that ships, without the developer exception page,
 and without `appsettings.Development.json`, which points at somebody's machine.
 
-**The harness's settings win.** In waffle the developer's environment wins over
+**The harness's settings win.** In specrig-go the developer's environment wins over
 the `env` hook; here it loses, as it does in specrig-js, because the setting that
 matters most is a neighbour's address and a developer's own one must not send a
 case to a real neighbour. A resource reads its own variable, and there a
 developer's database is welcome.
 
-**Stand-ins under the client, not in place of it.** waffle cuts an outbound gRPC
+**Stand-ins under the client, not in place of it.** specrig-go cuts an outbound gRPC
 dependency at the typed client, because below it is
 `Invoke(ctx, method string, args, reply any)`: a stand-in there would check the
 wire's language instead of the behaviour. Under a .NET client the stand-in has
@@ -189,7 +189,7 @@ the compiler, in a platform file either way. A YAML list would hold a renamed
 interface until somebody noticed.
 
 **A recorder, not a mock.** `Then` follows `When` by grammar, and a mock declares
-before the call — waffle's reasoning, unchanged. The stand-ins, the bus, the logs
+before the call — specrig-go's reasoning, unchanged. The stand-ins, the bus, the logs
 and the clock are recorders; a case that wants a mock brings its own for a
 granted type.
 
@@ -210,7 +210,7 @@ What was open is decided, and stays the owner's to reopen:
    its own, with fixtures each stack runs from a copy pinned to it.
 5. **Enforcement in Claude Code.** One plugin for every stack,
    [specrig](https://github.com/specrig/specrig): it reads the rules of the tool a
-   service's `specrig.yaml` or `waffle.yaml` names and checks every edit itself, so
+   service's `specrig.yaml` names and checks every edit itself, so
    no stack has a plugin or a guard of its own.
 
 ## Order, and where it stands
@@ -218,12 +218,11 @@ What was open is decided, and stays the owner's to reopen:
 | phase | delivers | done when | stands |
 |---|---|---|---|
 | 0 | `specrig/1` written down, with fixtures | the Go and JS writers pass them | in the protocol; the .NET writer passes the record fixtures, and the plugin's guard the guard fixtures |
-| 1 | the host boot, the settings, HTTP stand-ins and the OpenAPI check, the checks after a case, the Reqnroll binding, `Postgres`, logs, the clock; HTTP, jobs and commands as ways in; `tests/flows.yaml`, `init`, `specrig.md` | two samples are green — a web API and a worker with no server that runs a job — and `waffle flows` reads their records beside a Go service's | built; `waffle flows` reads both samples' records, so far without a Go service beside them |
-| 2 | `tests/surface.yaml` through Roslyn — serves, calls, clients — and the settings check | the samples' links show in `waffle flows` with no `system` failure | built; `system` fails only on the parties the two samples lack — a customers service, a caller of `shop.Orders/Get`, a publisher of `invoices.paid`, a consumer of `reminders.sent` |
+| 1 | the host boot, the settings, HTTP stand-ins and the OpenAPI check, the checks after a case, the Reqnroll binding, `Postgres`, logs, the clock; HTTP, jobs and commands as ways in; `tests/flows.yaml`, `init`, `specrig.md` | two samples are green — a web API and a worker with no server that runs a job — and specrig-go's `flows` reads their records beside a Go service's | built; specrig-go's `flows` reads both samples' records, so far without a Go service beside them |
+| 2 | `tests/surface.yaml` through Roslyn — serves, calls, clients — and the settings check | the samples' links show in specrig-go's `flows` with no `system` failure | built; `system` fails only on the parties the two samples lack — a customers service, a caller of `shop.Orders/Get`, a publisher of `invoices.paid`, a consumer of `reminders.sent` |
 | 3 | `RabbitMQ.Client` both ways: the stand-in, `Deliver`, `publishes` and `consumes` | an event a Go service publishes reaches the .NET consumer in the flow map, and one the .NET service publishes reaches a Go consumer | built; not yet tried beside a Go service |
 | 4 | gRPC both ways, grants, `FailWith`, `Redis` | a gRPC neighbour is stood in for by its descriptor | built |
 | 5 | `rules` and enforcement | an edit outside the mode is refused in Claude Code | rules/1 built; the specrig plugin enforces it with the machine's own `dotnet` — tried here through the SDK image standing in for one |
 
-What phases 1 and 2 stand at is what `waffle flows`, built from waffle's sources,
-says of `samples/`. Billing is named in `samples/*/specrig.yaml`, as the format
+What phases 1 and 2 stand at is what specrig-go's `flows` says of `samples/`. Billing is named in `samples/*/specrig.yaml`, as the format
 asks for a host the set cannot tell.

@@ -72,7 +72,7 @@ not have, fails the stack's own test.
 | `what` | what the repository holds: `service`, `app` | |
 | `writer` | the stack's command that writes `specrig.md`: `npx --no specrig agents` | |
 | `version` | the tool that writes it, with its version: `@specrig/web 0.4.0` | |
-| `cut` | what a case may stand in for, read before the cycle — waffle's permission list, specrig-dotnet's `tests/internal/Harness.cs` | |
+| `cut` | what a case may stand in for, read before the cycle — specrig-go's `replacements.allow`, specrig-dotnet's `tests/internal/Harness.cs` | |
 | `validate` | what runs after every edit | |
 | `boundary` | why the platform boundary holds with the rule off | |
 | `spec-paths` | the paths of the person writing the specification | |
@@ -81,8 +81,8 @@ not have, fails the stack's own test.
 | `modes` | the rows of the mode table, from [modes.yaml](modes.yaml) | |
 | `platform-files` | the platform's files, as a list | |
 | `generated` | a sentence on what the stack's tool and the run write | yes |
-| `tool` | whose the default areas are: `waffle`, `specrig` | |
-| `config` | the marker file: `waffle.yaml`, `specrig.yaml` | |
+| `tool` | whose the default areas are: `specrig` | |
+| `config` | the marker file: `specrig.yaml` | |
 | `areas` | the rows of the area table | |
 | `cases` | what the executable specification is | |
 | `contracts` | a paragraph on how the contracts a case leans on are checked, and where they are listed | yes |

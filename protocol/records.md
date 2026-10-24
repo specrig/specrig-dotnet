@@ -1,8 +1,9 @@
 # The records
 
 What specrig's records hold and how each writer names what it saw. Each stack has
-its writer — waffle for a Go service, specrig-js for a web app, specrig-dotnet for a
-.NET service — and `flows` (today `waffle flows`) reads them all as one system,
+its writer — specrig-go for a Go service, specrig-js for a web app, specrig-php for a
+PHP service, specrig-dotnet for a .NET service — and `flows`, in specrig-go, reads
+them all as one system,
 joining services by the names in them. A name one writer spells differently from another is a link lost,
 so this page is what they agree on.
 
@@ -155,7 +156,7 @@ service has only `optional`; Symfony's `%env(X)%` without a `default:` processor
 ## specrig.yaml
 
 Beside the service, what neither the records nor the tools can learn from the
-code. A waffle service keeps the same keys in `waffle.yaml`.
+code.
 
 ```yaml
 guard: [dotnet, specrig]

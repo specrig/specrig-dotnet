@@ -1,7 +1,9 @@
 # specrig protocol
 
-What every specrig stack agrees on, written down once. A stack — waffle for Go,
+What every specrig stack agrees on, written down once. A stack —
+[specrig-go](https://github.com/specrig/specrig-go),
 [specrig-js](https://github.com/specrig/specrig-js),
+[specrig-php](https://github.com/specrig/specrig-php),
 [specrig-dotnet](https://github.com/specrig/specrig-dotnet) — has its own harness,
 because how a service is booted and stood in for is its stack's; what crosses the
 stacks is here, with fixtures each implementation runs to show it agrees.
@@ -20,8 +22,8 @@ stacks is here, with fixtures each implementation runs to show it agrees.
 
 Nothing here runs. The tools that work across stacks are written in Go: the Claude
 Code plugin that enforces the modes is [specrig](https://github.com/specrig/specrig),
-and `flows`, which reads every service's records as one system, is `waffle flows`
-until it moves to [specrig-go](https://github.com/specrig/specrig-go).
+and `flows`, which reads every service's records as one system, is in
+[specrig-go](https://github.com/specrig/specrig-go).
 
 ## Taking it
 
