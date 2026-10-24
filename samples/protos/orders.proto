@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option csharp_namespace = "Shop.Grpc";
+
+package shop;
+
+service Orders {
+  rpc Get (OrderRef) returns (OrderReply);
+}
+
+message OrderRef {
+  int32 id = 1;
+}
+
+message OrderReply {
+  int32 id = 1;
+  int32 to_pay = 2;
+  string customer = 3;
+}

@@ -1,0 +1,37 @@
+# Generated from the component suite by specrig: every whole run rewrites the
+# structure; only the description fields are yours.
+specrig: flows/1
+service: shop
+inputs:
+  - message: grpc /shop.Orders/Get
+    fields:
+      - id
+    branches:
+      - refused: NotFound order_not_found
+        cases:
+          - "orders.feature: The customer's app is told the shop has no such order"
+      - sends:
+          - http GET /invoices/{orderId}
+          - grpc /customers.Customers/OfOrder
+        sent:
+          grpc /customers.Customers/OfOrder:
+            - order
+        cases:
+          - "orders.feature: The customer's app shows the order and whose it is"
+  - message: http GET /orders/{id}
+    branches:
+      - refused: HTTP 404 order_not_found
+        cases:
+          - "orders.feature: An order the shop does not have is refused"
+      - refused: HTTP 503
+        cases:
+          - "orders.feature: The customer is told to come back while the shop's database is down"
+      - sends:
+          - http GET /invoices/{orderId}
+        cases:
+          - "orders.feature: The customer sees what is left to pay"
+outputs:
+  - message: grpc /customers.Customers/OfOrder
+    fields:
+      - order
+  - message: http GET /invoices/{orderId}

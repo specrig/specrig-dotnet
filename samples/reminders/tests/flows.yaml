@@ -1,0 +1,74 @@
+# Generated from the component suite by specrig: every whole run rewrites the
+# structure; only the description fields are yours.
+specrig: flows/1
+service: reminders
+inputs:
+  - message: command RemindersJob
+    branches:
+      - sends:
+          - http GET /invoices
+          - http POST /reminders
+          - event reminders.sent
+        sent:
+          event reminders.sent:
+            - amount
+            - order
+          http POST /reminders:
+            - amount
+            - order
+        cases:
+          - "reminders.feature: The scheduler reminds as many customers a run as it is set to"
+  - message: command SendReminders
+    branches:
+      - sends:
+          - http GET /invoices
+        cases:
+          - "reminders.feature: An invoice billing has reported paid is not reminded of while billing still lists it"
+          - "reminders.feature: An invoice not yet due is not reminded of"
+      - sends:
+          - http GET /invoices
+          - http POST /reminders
+          - event reminders.sent
+        sent:
+          event reminders.sent:
+            - amount
+            - order
+          http POST /reminders:
+            - amount
+            - order
+        cases:
+          - "reminders.feature: A customer whose invoice is overdue is reminded"
+  - message: command remind
+    branches:
+      - sends:
+          - http GET /invoices
+          - http POST /reminders
+          - event reminders.sent
+        sent:
+          event reminders.sent:
+            - amount
+            - order
+          http POST /reminders:
+            - amount
+            - order
+        cases:
+          - "reminders.feature: The reminders are run by hand"
+  - message: event invoices.paid
+    fields:
+      - order
+    branches:
+      - cases:
+          - "reminders.feature: A payment billing reports is acknowledged"
+      - refused: dropped
+        cases:
+          - "reminders.feature: A payment report the reminders cannot read is dropped"
+outputs:
+  - message: event reminders.sent
+    fields:
+      - amount
+      - order
+  - message: http GET /invoices
+  - message: http POST /reminders
+    fields:
+      - amount
+      - order

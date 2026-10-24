@@ -1,0 +1,5 @@
+bin/
+obj/
+TestResults/
+*.feature.cs
+**/Reqnroll/userid

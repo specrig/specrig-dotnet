@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package notification;
+
+option csharp_namespace = "Gateway.Notification";
+
+service Mail {
+  rpc Send (Letter) returns (Sent);
+}
+
+message Letter {
+  string to = 1;
+  string body = 2;
+}
+
+message Sent {
+  string id = 1;
+}

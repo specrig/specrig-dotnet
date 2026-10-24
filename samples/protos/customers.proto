@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Shop.Customers";
+
+package customers;
+
+service Customers {
+  rpc OfOrder (OrderRef) returns (Customer);
+}
+
+message OrderRef {
+  int32 order = 1;
+}
+
+message Customer {
+  string name = 1;
+}

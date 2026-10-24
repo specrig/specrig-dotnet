@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="protos/customer.proto" GrpcServices="Client" />
+    <Protobuf Include="protos/notification.proto" GrpcServices="Client" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,4 @@
+guard: [dotnet, run, --project, ../../src/Specrig.Tool, --]
+flows:
+  clients:
+    Reminders.Billing: billing

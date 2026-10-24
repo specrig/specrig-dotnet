@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package customer;
+
+option csharp_namespace = "Gateway.Customer";
+
+service Accounts {
+  rpc Get (AccountRef) returns (Account);
+}
+
+service Sessions {
+  rpc Summon (Token) returns (Session);
+}
+
+message AccountRef {
+  int64 id = 1;
+}
+
+message Account {
+  int64 id = 1;
+  string email = 2;
+}
+
+message Token {
+  string value = 1;
+}
+
+message Session {
+  int64 account_id = 1;
+}

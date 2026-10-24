@@ -1,0 +1,34 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Specrig/Specrig.csproj" />
+    <Project Path="src/Specrig.Hosting/Specrig.Hosting.csproj" />
+    <Project Path="src/Specrig.Reqnroll/Specrig.Reqnroll.csproj" />
+    <Project Path="src/Specrig.Postgres/Specrig.Postgres.csproj" />
+    <Project Path="src/Specrig.RabbitMQ/Specrig.RabbitMQ.csproj" />
+    <Project Path="src/Specrig.Redis/Specrig.Redis.csproj" />
+    <Project Path="src/Specrig.Grpc/Specrig.Grpc.csproj" />
+    <Project Path="src/Specrig.Surface/Specrig.Surface.csproj" />
+    <Project Path="src/Specrig.Tool/Specrig.Tool.csproj" />
+    <Project Path="src/Specrig.Quartz/Specrig.Quartz.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Specrig.Tests/Specrig.Tests.csproj" />
+    <Project Path="test/Specrig.Hosting.Tests/Specrig.Hosting.Tests.csproj" />
+    <Project Path="test/Specrig.RabbitMQ.Tests/Specrig.RabbitMQ.Tests.csproj" />
+    <Project Path="test/Specrig.Redis.Tests/Specrig.Redis.Tests.csproj" />
+    <Project Path="test/Specrig.Surface.Tests/Specrig.Surface.Tests.csproj" />
+    <Project Path="test/Specrig.Tool.Tests/Specrig.Tool.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/fixtures/">
+    <Project Path="test/fixtures/gateway/src/Gateway.csproj" />
+  </Folder>
+  <Folder Name="/samples/" />
+  <Folder Name="/samples/shop/">
+    <Project Path="samples/shop/src/Shop.csproj" />
+    <Project Path="samples/shop/tests/Specs.csproj" />
+  </Folder>
+  <Folder Name="/samples/reminders/">
+    <Project Path="samples/reminders/src/Reminders.csproj" />
+    <Project Path="samples/reminders/tests/Specs.csproj" />
+  </Folder>
+</Solution>

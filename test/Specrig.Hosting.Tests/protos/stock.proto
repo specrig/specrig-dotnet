@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Specrig.Hosting.Tests.Stock";
+
+package stock;
+
+service Stock {
+  rpc Get (Item) returns (Level);
+}
+
+message Item {
+  int32 id = 1;
+}
+
+message Level {
+  int32 count = 1;
+}
