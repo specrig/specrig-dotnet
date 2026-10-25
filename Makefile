@@ -29,8 +29,8 @@ test-docker:
 protocol:
 	rm -rf protocol
 	mkdir -p protocol/fixtures
-	cp -R $(PROTOCOL)/README.md $(PROTOCOL)/records.md $(PROTOCOL)/guard.md $(PROTOCOL)/modes.yaml \
-		$(PROTOCOL)/specrig-md.md $(PROTOCOL)/agents protocol/
+	cp -R $(PROTOCOL)/README.md $(PROTOCOL)/records.md $(PROTOCOL)/system.md $(PROTOCOL)/guard.md \
+		$(PROTOCOL)/modes.yaml $(PROTOCOL)/specrig-md.md $(PROTOCOL)/agents protocol/
 	cp -R $(PROTOCOL)/fixtures/records $(PROTOCOL)/fixtures/agents $(PROTOCOL)/fixtures/markers protocol/fixtures/
 
 .PHONY: build generate test generate-docker test-docker protocol

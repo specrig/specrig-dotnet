@@ -2,9 +2,8 @@
 
 What specrig's records hold and how each writer names what it saw. Each stack has
 its writer — specrig-go for a Go service, specrig-js for a web app, specrig-php for a
-PHP service, specrig-dotnet for a .NET service — and `flows`, in specrig-go, reads
-them all as one system,
-joining services by the names in them. A name one writer spells differently from another is a link lost,
+PHP service, specrig-dotnet for a .NET service — and `specrig-flows` reads them all
+as [one system](system.md), joining services by the names in them. A name one writer spells differently from another is a link lost,
 so this page is what they agree on.
 
 Each record says first what it is, as an OpenAPI document does under `openapi:`, and
@@ -124,7 +123,7 @@ of `needs` and `sent` by bytes. Keys in a mapping keep the order above.
 ## tests/checks.yaml — `specrig: checks/1`
 
 What a service's boot is checked against, read from its code beside
-`surface.yaml`. `flows` does not read it.
+`surface.yaml`. `specrig-flows` does not read it.
 
 ```yaml
 specrig: checks/1
