@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Reflection;
 using Reqnroll;
@@ -40,7 +41,8 @@ public sealed class Hooks(IObjectContainer container, ScenarioContext scenario, 
         try
         {
             await current.Settle();
-            var title = scenario.ScenarioInfo.Title;
+            var info = scenario.ScenarioInfo;
+            var title = Features.Filled(info.Title, info.Arguments.Cast<DictionaryEntry>().Select(e => ($"{e.Key}", $"{e.Value}")));
             var label = features.Value.Find(feature.FeatureInfo.Title, title)?.Label ?? title;
             runs.Add(new Run(label, current.Trace.Records));
             ran[label] = true;

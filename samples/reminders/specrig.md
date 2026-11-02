@@ -1,7 +1,7 @@
 # specrig.md
 
 How an agent works in this service under specrig: Rule #11, and how the suite runs.
-`dotnet run --project ../../src/Specrig.Tool -- agents` writes this file with `Specrig.Tool` 0.1.1, and an edit here is lost on the next
+`dotnet run --project ../../src/Specrig.Tool -- agents` writes this file with `Specrig.Tool` 0.1.2, and an edit here is lost on the next
 run; `AGENTS.md` beside it is the service's own.
 
 **Read `CONTRIBUTING.md` first, if it exists.** It holds service-specific

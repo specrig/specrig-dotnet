@@ -28,7 +28,7 @@ public class FeaturesTests
                   | EUR      |
             """);
 
-        Assert.Equal(["orders/pay.feature: The customer pays", "orders/pay.feature: The customer pays in <currency>"],
+        Assert.Equal(["orders/pay.feature: The customer pays", "orders/pay.feature: The customer pays in EUR"],
             features.Cases.Select(c => c.Label));
     }
 
@@ -47,6 +47,37 @@ public class FeaturesTests
             """);
 
         Assert.Equal([("Skipped", true), ("Run", false)], features.Cases.Select(c => (c.Title, c.Ignored)));
+    }
+
+    [Fact]
+    public void An_outline_is_a_case_for_each_row_of_its_examples()
+    {
+        var features = Write("a.feature", """
+            Feature: A
+
+              Scenario Outline: Paying in <currency>
+                When the customer pays in <currency>
+
+                Examples:
+                  | currency   |
+                  | EUR        |
+                  | EUR \| USD |
+
+                @ignore
+                Examples:
+                  | currency |
+                  | USD      |
+
+              Rule: Refunds
+
+                Background:
+                  Given a paid order
+                    | currency |
+                    | GBP      |
+            """);
+
+        Assert.Equal([("Paying in EUR", false), ("Paying in EUR | USD", false), ("Paying in USD", true)],
+            features.Cases.Select(c => (c.Title, c.Ignored)));
     }
 
     [Fact]

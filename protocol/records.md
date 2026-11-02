@@ -198,7 +198,7 @@ input to the record — so a writer in any language can run the same files.
 
 | field | what |
 |---|---|
-| `case` | `<feature file>: <scenario title>` |
+| `case` | `<feature file>: <scenario title>`; each row of an outline's examples is a case of its own, titled with every `<column>` filled from the row |
 | `seq` | the order the records were made in, across the case |
 | `dir` | `in` for what reached the service, `out` for what it sent |
 | `kind`, `name` | the message, as the table above names it |
