@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
@@ -112,7 +113,27 @@ public sealed class GrpcBackend(string origin, params ServiceDescriptor[] servic
                 return Status(request, StatusCode.Unimplemented, null);
             }
             var body = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancel);
-            message = method.InputType.Parser.ParseFrom(body.Length < 5 ? [] : body[5..]);
+            var encoding = request.Headers.TryGetValues("grpc-encoding", out var named) ? string.Join(",", named) : null;
+            if (body is [1, ..] && encoding != "gzip")
+            {
+                lock (gate)
+                {
+                    violations.Add($"{path} came compressed with {encoding ?? "no grpc-encoding"}, which {Name} does not read");
+                }
+                return Status(request, StatusCode.Unimplemented, null);
+            }
+            try
+            {
+                message = method.InputType.Parser.ParseFrom(Payload(body));
+            }
+            catch (Exception unreadable) when (unreadable is InvalidProtocolBufferException or InvalidDataException)
+            {
+                lock (gate)
+                {
+                    violations.Add($"{path} sent no readable {method.InputType.Name}: {unreadable.Message}");
+                }
+                return Status(request, StatusCode.Internal, null);
+            }
             Declared? reply;
             lock (gate)
             {
@@ -138,6 +159,22 @@ public sealed class GrpcBackend(string origin, params ServiceDescriptor[] servic
         {
             trace.End(call, "out", "grpc", path, message is null ? null : JsonNode.Parse(JsonFormatter.Default.Format(message)));
         }
+    }
+
+    static byte[] Payload(byte[] frame)
+    {
+        if (frame.Length < 5)
+        {
+            return [];
+        }
+        if (frame[0] == 0)
+        {
+            return frame[5..];
+        }
+        using var gzip = new GZipStream(new MemoryStream(frame, 5, frame.Length - 5), CompressionMode.Decompress);
+        using var plain = new MemoryStream();
+        gzip.CopyTo(plain);
+        return plain.ToArray();
     }
 
     static HttpResponseMessage Message(HttpRequestMessage request, IMessage answer)

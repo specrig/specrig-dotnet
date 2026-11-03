@@ -1,5 +1,7 @@
+using System.IO.Compression;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Grpc.Net.Compression;
 using Shop.Customers;
 
 namespace Specrig.Hosting.Tests;
@@ -7,12 +9,13 @@ namespace Specrig.Hosting.Tests;
 public class GrpcBackendTests
 {
     readonly GrpcBackend customers = new("https://customers.shop.test", Shop.Customers.Customers.Descriptor);
+    readonly GrpcChannel channel;
     readonly Customers.CustomersClient client;
 
     public GrpcBackendTests()
     {
         ((IStandIn)customers).Attach("Customers", new Trace(), () => "");
-        var channel = GrpcChannel.ForAddress(customers.Origin, new GrpcChannelOptions { HttpHandler = new StandIns([customers]).Handler() });
+        channel = GrpcChannel.ForAddress(customers.Origin, new GrpcChannelOptions { HttpHandler = new StandIns([customers]).Handler() });
         client = new Customers.CustomersClient(channel);
     }
 
@@ -43,6 +46,51 @@ public class GrpcBackendTests
         await client.OfOrderAsync(new OrderRef { Order = 7 });
 
         Assert.Contains("answered a OrderRef where OfOrder answers a Customer", Assert.Single(((IStandIn)customers).Failures()));
+    }
+
+    [Theory]
+    [InlineData("gzip")]
+    [InlineData("identity")]
+    public async Task A_request_in_an_encoding_the_neighbour_reads_is_answered(string encoding)
+    {
+        customers.Reply("OfOrder", new Customer { Name = "Ann" });
+
+        var customer = await client.OfOrderAsync(new OrderRef { Order = 7 }, new Metadata { { "grpc-internal-encoding-request", encoding } });
+
+        Assert.Equal("Ann", customer.Name);
+        Assert.Equal(7, Assert.Single(customers.Requests<OrderRef>("OfOrder")).Order);
+        Assert.Empty(((IStandIn)customers).Failures());
+    }
+
+    [Fact]
+    public async Task A_request_compressed_in_an_encoding_the_neighbour_does_not_read_is_unimplemented_and_named()
+    {
+        var deflating = GrpcChannel.ForAddress(customers.Origin, new GrpcChannelOptions
+        {
+            HttpHandler = new StandIns([customers]).Handler(),
+            CompressionProviders = [new DeflateCompressionProvider(CompressionLevel.Fastest)],
+        });
+        customers.Reply("OfOrder", new Customer { Name = "Ann" });
+
+        var refused = await Assert.ThrowsAsync<RpcException>(async () =>
+            await new Customers.CustomersClient(deflating).OfOrderAsync(new OrderRef { Order = 7 }, new Metadata { { "grpc-internal-encoding-request", "deflate" } }));
+
+        Assert.Equal(StatusCode.Unimplemented, refused.StatusCode);
+        Assert.Contains("/customers.Customers/OfOrder came compressed with deflate, which Customers does not read", Assert.Single(((IStandIn)customers).Failures()));
+        Assert.Empty(customers.Requests<OrderRef>("OfOrder"));
+    }
+
+    [Fact]
+    public async Task A_request_that_is_no_message_of_the_method_is_named()
+    {
+        var bytes = Marshallers.Create<byte[]>(payload => payload, payload => payload);
+        var raw = new Method<byte[], byte[]>(MethodType.Unary, "customers.Customers", "OfOrder", bytes, bytes);
+        customers.Reply("OfOrder", new Customer { Name = "Ann" });
+
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await channel.CreateCallInvoker().AsyncUnaryCall(raw, null, new CallOptions(), [0xFF]));
+
+        Assert.Equal(StatusCode.Internal, refused.StatusCode);
+        Assert.Contains("/customers.Customers/OfOrder sent no readable OrderRef", Assert.Single(((IStandIn)customers).Failures()));
     }
 
     [Fact]
