@@ -4,6 +4,8 @@ namespace Specrig;
 
 public sealed record Case(string File, string Feature, string Title, bool Ignored)
 {
+    public string Row { get; init; } = "";
+
     public string Label => $"{File}: {Title}";
 }
 
@@ -26,13 +28,20 @@ public sealed class Features
 
     public IReadOnlyList<Case> Cases => cases;
 
-    public Case? Find(string feature, string title) =>
-        cases.Where(c => c.Feature == feature && c.Title == title).ToList() is [var one] ? one
-        : cases.Where(c => c.Title == title).ToList() is [var only] ? only
-        : null;
+    public Case? Find(string feature, string title, IEnumerable<(string Column, string Value)> row)
+    {
+        var filled = Filled(title, row);
+        var cells = Row(row);
+        var found = cases.Where(c => !c.Ignored && c.Title == filled && c.Row == cells).Distinct().ToList();
+        return found.Where(c => c.Feature == feature).ToList() is [var one] ? one
+            : found is [var only] ? only
+            : null;
+    }
 
-    public static string Filled(string title, IEnumerable<(string Column, string Value)> row) =>
+    static string Filled(string title, IEnumerable<(string Column, string Value)> row) =>
         row.Aggregate(title, (filled, cell) => filled.Replace($"<{cell.Column}>", cell.Value));
+
+    static string Row(IEnumerable<(string Column, string Value)> row) => string.Join('\0', row);
 
     static List<Case> Parse(string file, string[] lines)
     {
@@ -84,7 +93,8 @@ public sealed class Features
                 }
                 else
                 {
-                    found.Add(outline! with { Title = Filled(outline.Title, header.Zip(cells)), Ignored = ignored });
+                    var row = header.Zip(cells).ToList();
+                    found.Add(outline! with { Title = Filled(outline.Title, row), Row = Row(row), Ignored = ignored });
                 }
                 continue;
             }

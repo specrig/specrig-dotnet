@@ -86,8 +86,87 @@ public class FeaturesTests
         Write("a.feature", "Feature: A\n  Scenario: Shared\n  Scenario: Only here\n");
         var features = Write("b.feature", "Feature: B\n  Scenario: Shared\n");
 
-        Assert.Equal("b.feature", features.Find("B", "Shared")!.File);
-        Assert.Equal("a.feature", features.Find("Renamed", "Only here")!.File);
-        Assert.Null(features.Find("Renamed", "Shared"));
+        Assert.Equal("b.feature", features.Find("B", "Shared", [])!.File);
+        Assert.Equal("a.feature", features.Find("Renamed", "Only here", [])!.File);
+        Assert.Null(features.Find("Renamed", "Shared", []));
+    }
+
+    [Fact]
+    public void Each_row_of_an_outline_whose_title_names_no_column_is_found_under_that_title()
+    {
+        var features = Write("a.feature", """
+            Feature: A
+
+              Scenario Outline: A refused payment is not taken
+                When the customer pays in <currency>
+
+                Examples:
+                  | currency |
+                  | EUR      |
+                  | USD      |
+            """);
+
+        var eur = features.Find("A", "A refused payment is not taken", [("currency", "EUR")]);
+        var usd = features.Find("A", "A refused payment is not taken", [("currency", "USD")]);
+
+        Assert.NotEqual(eur, usd);
+        Assert.Equal("a.feature: A refused payment is not taken", eur!.Label);
+        Assert.Equal(eur.Label, usd!.Label);
+    }
+
+    [Fact]
+    public void A_row_of_an_outline_whose_title_names_a_column_is_found_under_the_title_it_fills()
+    {
+        var features = Write("a.feature", """
+            Feature: A
+
+              Scenario Outline: Paying in <currency>
+                When the customer pays in <currency>
+
+                Examples:
+                  | currency   |
+                  | EUR \| USD |
+            """);
+
+        Assert.Equal("a.feature: Paying in EUR | USD", features.Find("A", "Paying in <currency>", [("currency", "EUR | USD")])!.Label);
+    }
+
+    [Fact]
+    public void A_row_its_examples_do_not_have_is_not_found()
+    {
+        var features = Write("a.feature", """
+            Feature: A
+
+              Scenario Outline: A refused payment is not taken
+                When the customer pays in <currency>
+
+                Examples:
+                  | currency |
+                  | EUR      |
+            """);
+
+        Assert.Null(features.Find("A", "A refused payment is not taken", [("currency", "USD")]));
+    }
+
+    [Fact]
+    public void A_row_in_examples_both_ignored_and_not_is_found_as_the_one_that_runs()
+    {
+        var features = Write("a.feature", """
+            Feature: A
+
+              Scenario Outline: A refused payment is not taken
+                When the customer pays in <currency>
+
+                @ignore
+                Examples:
+                  | currency |
+                  | EUR      |
+
+                Examples:
+                  | currency |
+                  | EUR      |
+            """);
+
+        Assert.False(features.Find("A", "A refused payment is not taken", [("currency", "EUR")])!.Ignored);
     }
 }

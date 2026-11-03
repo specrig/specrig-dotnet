@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Reflection;
 using Reqnroll;
 using Reqnroll.Bindings;
@@ -11,10 +10,7 @@ namespace Specrig;
 public sealed class Hooks(IObjectContainer container, ScenarioContext scenario, FeatureContext feature)
 {
     static readonly Lazy<Type> harness = new(FindHarness);
-    static readonly Lazy<Features> features = new(() => new Features(Path.Combine(Rig.Tests, "feature")));
-    static readonly ConcurrentBag<Run> runs = [];
-    static readonly ConcurrentDictionary<string, bool> ran = new();
-    static string? service;
+    static readonly Lazy<Runs> runs = new(() => new Runs(new Features(Path.Combine(Rig.Tests, "feature")), Path.Combine(Rig.Tests, "flows.yaml")));
 
     Rig Current => (Rig)container.Resolve(harness.Value);
 
@@ -42,12 +38,9 @@ public sealed class Hooks(IObjectContainer container, ScenarioContext scenario, 
         {
             await current.Settle();
             var info = scenario.ScenarioInfo;
-            var title = Features.Filled(info.Title, info.Arguments.Cast<DictionaryEntry>().Select(e => ($"{e.Key}", $"{e.Value}")));
-            var label = features.Value.Find(feature.FeatureInfo.Title, title)?.Label ?? title;
-            runs.Add(new Run(label, current.Trace.Records));
-            ran[label] = true;
-            service ??= current.Service;
-            if (current.Failures() is { Count: > 0 } failures)
+            var row = info.Arguments.Cast<DictionaryEntry>().Select(e => ($"{e.Key}", $"{e.Value}"));
+            IReadOnlyList<string> failures = [.. current.Failures(), .. runs.Value.Add(current.Service, feature.FeatureInfo.Title, info.Title, row, current.Trace.Records)];
+            if (failures.Count > 0)
             {
                 throw new InvalidOperationException(string.Join("\n", failures));
             }
@@ -59,31 +52,7 @@ public sealed class Hooks(IObjectContainer container, ScenarioContext scenario, 
     }
 
     [AfterTestRun]
-    public static async Task End()
-    {
-        try
-        {
-            Write();
-        }
-        finally
-        {
-            await Rig.EndRun();
-        }
-    }
-
-    // A run narrowed to some cases saw part of the service, and its record would lose the rest.
-    static void Write()
-    {
-        if (service is null || !features.Value.Cases.Where(c => !c.Ignored).All(c => ran.ContainsKey(c.Label)))
-        {
-            return;
-        }
-        if (Flows.Write(Path.Combine(Rig.Tests, "flows.yaml"), service, runs) > 0)
-        {
-            throw new InvalidOperationException(
-                "tests/flows.yaml: some descriptions lost their anchor — delete them or move them under the input or branch they belong to now");
-        }
-    }
+    public static Task End() => Rig.EndRun();
 
     static Type FindHarness()
     {

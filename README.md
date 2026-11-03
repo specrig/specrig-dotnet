@@ -467,9 +467,10 @@ flight to it and from it, then 50 ms with nothing more.
 
 Every whole run rewrites it, a failing one included; a run narrowed by `--filter`
 writes nothing, which the harness tells by the scenarios that ran against the
-scenarios in `tests/feature/`. Only the `description` fields are written by hand:
+scenarios in `tests/feature/`, row by row of an outline's examples; one that ran and
+is not among them fails, and the record does not hold it. Only the `description` fields are written by hand:
 they survive a rewrite, and one whose step is gone moves to `orphaned`, comes back
-with its step, and fails the run meanwhile.
+with its step, and fails the case that ends the run meanwhile.
 
 ## The protocol
 
