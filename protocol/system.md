@@ -138,11 +138,14 @@ fails.
 
 **Pages** are for people. A flow's page draws the sequence, the branches under the
 arrow that reached them and the condition that made them, and the cases of its own
-input with the comment above each in its `.feature` file — the file the case names,
-found anywhere below the service's `tests/`. A step further on lists its branches
-and links to its own page. A message not followed is a note on its step: either it
-cannot be sent there, or its receiver has no case sending it with what the flow
-carries — a gap to close either way. The text of a page is the tool's.
+input with what their `.feature` file says of them — the file the case names, found
+anywhere below the service's `tests/`. Within a branch the cases of one `Rule` stand
+together under its title, and those under no rule come first; a rule's description
+stands once in the step, in the first branch with its cases. A case's own text is its
+description or, where it has none, the comment above it. A step further on lists its
+branches and links to its own page. A message not followed is a note on its step:
+either it cannot be sent there, or its receiver has no case sending it with what the
+flow carries — a gap to close either way. The text of a page is the tool's.
 
 ## The fixtures
 
