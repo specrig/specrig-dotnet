@@ -86,7 +86,7 @@ not have, fails the stack's own test.
 | `areas` | the rows of the area table | |
 | `cases` | what the executable specification is | |
 | `contracts` | a paragraph on how the contracts a case leans on are checked, and where they are listed | yes |
-| `describes` | what a case is written about, and what a neighbour answers | yes |
+| `describes` | what a case is written about, what a neighbour answers, and how an event and what lands during an operation are written | yes |
 | `binding` | how a case is bound in red-green: the harness, what may be stood in for, when the cut does not fit | |
 
 A mode row is `| <name> | <allows> |`, with `{{cases}}` in `allows` filled by the
