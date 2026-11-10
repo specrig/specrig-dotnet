@@ -85,7 +85,7 @@ verdict out, which the plugin runs against the rules every stack prints.
 | inbound gRPC | the same middleware, by the request's path: the body copied as the server reads it, so a stream is not waited on, decoded by the request type's own parser; the refusal from the trailers, the reason from the rich status's `ErrorInfo` |
 | settings | `Program`'s command line, which the default builders read last, so the answers win over `appsettings.json` and the environment even for what `Program` reads before it builds the host; the keys the code reads come from the same Roslyn pass as `surface`, written to `tests/checks.yaml` |
 | resources | `IResource`: `Provision` before the boot answers its setting, `Configure` sees the container, `Migrate` and `Reset` follow the start; `Rig.Ending` takes what comes down when the run ends — the Reqnroll hook, or the process exit for any other runner |
-| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; Respawn over the tables found after migrating |
+| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; the tables found after migrating, their rows copied aside to `specrig_baseline` and their sequences read; before every case, in one transaction under `session_replication_role = replica`, `TRUNCATE`, the copies inserted back and the sequences set where they stood |
 | Redis | Testcontainers, a container of the run's own, removed when it ends; `FLUSHDB` before every case |
 | a resource that goes down | for Postgres a loopback gate of the case's own, closed for a refusal, so every client fails, beside a connection and a command interceptor on every EF Core context for an error of the step's choosing; for Redis a proxy over the container's `IConnectionMultiplexer` and every database and batch it hands out |
 | logs | `AddFakeLogging`: a provider beside the real ones, so a case reads what the production logger built |
@@ -156,6 +156,16 @@ test` over a solution runs them in parallel. A run killed before its end is
 cleaned up by the next one's sweep, as in specrig-go: a name of the shape, specrig's
 mark over an hour old, nobody connected.
 
+**Back to what the migrations left, not to empty.** A schema without the rows its
+migrations write — a `HasData` seed, the states an order moves through, the root
+of a tree — exists in no environment, so a case run against it tests a world
+nobody deploys; and ids that grow from case to case let a case depend on the ones
+before it. So a reset puts back the rows and the sequences the migrations left,
+as the Go, PHP and Python stacks do. Respawn can only delete, so the reset is
+plain SQL. Putting rows back turns foreign keys and triggers off for one
+transaction, which needs a superuser: the container has one, and migrations that
+write no rows need none.
+
 **A case's fault is the case's.** `FailWith` lives on the case's own resource
 object, the gate and the interceptors are the case's own, so the next case boots
 whole with nothing to heal. A migration runs through the service's contexts too,
@@ -164,7 +174,7 @@ and is let through.
 **A service per case.** A singleton that keeps state — a cache, an in-memory
 queue — is the leak between cases nobody sees until the order changes. The
 expensive parts are the containers, which are kept, and the database, which is
-emptied; building the host is measured before anybody trades isolation for it.
+put back; building the host is measured before anybody trades isolation for it.
 
 **`Production`.** The pipeline that ships, without the developer exception page,
 and without `appsettings.Development.json`, which points at somebody's machine.

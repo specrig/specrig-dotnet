@@ -70,7 +70,7 @@ copy of which is in [protocol/](protocol).
 | `Specrig.RabbitMQ` | events in and out over `RabbitMQ.Client`, in process: what the service publishes is recorded, and a delivery is routed by the bindings the service made |
 | `Specrig.Quartz` | a Quartz job run as the scheduler runs it, with the detail the service registered |
 | `Specrig.Reqnroll` | binds the harness to Reqnroll: the step a record belongs to, the checks after a case, `tests/flows.yaml` after a run |
-| `Specrig.Postgres`, `Specrig.Redis` | resources: a real system, provisioned once per run and emptied before every case |
+| `Specrig.Postgres`, `Specrig.Redis` | resources: a real system, provisioned once per run and put back before every case — Postgres as its migrations left it, Redis empty |
 | `Specrig.Surface` | the Roslyn pass behind `tests/surface.yaml` and `tests/checks.yaml` |
 | `Specrig.Tool` | the dotnet tool `specrig`: `init`, `surface`, `agents`, and `rules` of the protocol's rules/1 |
 
@@ -252,7 +252,8 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 The service boots at the first step that reaches it, so a `Given` declares and
 replaces before anything is built. Each case boots a service of its own: a
 singleton holding state does not carry it into the next case. The resources are
-provisioned once per run and emptied before every case.
+provisioned once per run and put back before every case: Postgres as its
+migrations left it, Redis empty.
 
 A call no step answered gets a 501, or `Unimplemented` over gRPC, and fails the
 case, named. After the case, every request and every answer is checked against the
@@ -374,7 +375,7 @@ database is welcome where the service's settings are not.
 ## Postgres
 
 ```csharp
-public Postgres Database { get; } = new("ConnectionStrings:Shop") { Keep = ["currencies"] };
+public Postgres Database { get; } = new("ConnectionStrings:Shop");
 ```
 
 The address is the one given as `Address`, else `<SERVICE>_TEST_POSTGRES`, else a
@@ -390,8 +391,14 @@ address, which may carry a password.
 The schema is the service's own: at the first boot of the run every EF Core
 `DbContext` the container registers — or makes through an `IDbContextFactory` — is
 migrated, or has its model's tables created where it has no migrations. Before
-every case Respawn empties every table it finds, but `__EFMigrationsHistory` and
-those `Keep` names.
+every case each table is put back as the migrations left it, ids included: a row
+a migration wrote — a `HasData` seed, the states an order moves through, the root
+of a tree — stays, a case's own row goes, and the next id follows the seeded rows,
+or is 1 where there are none. Putting rows back turns foreign keys and triggers
+off for one transaction, which needs a superuser: the container has one, and
+migrations that write no rows need none. `__EFMigrationsHistory` is left as it
+is, and so is a table `Keep` names, with whatever a case wrote to it; the rows
+the migrations write need no `Keep`.
 
 The service reaches the database through a gate of the case's own, on loopback.
 `harness.Database.FailWith(null)` closes it: what connects is refused and what is

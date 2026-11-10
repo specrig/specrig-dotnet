@@ -1,11 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>Postgres as a specrig resource: a real database in a container, provisioned once per run and emptied before every case.</Description>
+    <Description>Postgres as a specrig resource: a real database in a container, provisioned once per run and put back before every case as its migrations left it.</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Npgsql" />
-    <PackageReference Include="Respawn" />
     <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
   <ItemGroup>
