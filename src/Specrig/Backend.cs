@@ -19,7 +19,7 @@ public sealed class Backend : IStandIn
 {
     internal static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    sealed record Declared(Query Query, int Status, JsonNode? Body, IReadOnlyDictionary<string, string>? Headers);
+    sealed record Declared(Query Query, Func<Received, (int Status, JsonNode? Body)> Answer, IReadOnlyDictionary<string, string>? Headers);
 
     sealed record Waiting(string Request, TaskCompletionSource Released, CancellationToken Cancel);
 
@@ -78,13 +78,27 @@ public sealed class Backend : IStandIn
 
     public void ReplyTo(string method, string path, Query query, int status, object? body = null, IReadOnlyDictionary<string, string>? headers = null)
     {
+        var json = Encode(body);
+        Declare(method, path, new Declared(query, _ => (status, json), headers));
+    }
+
+    public void ReplyWith(string method, string path, Func<Received, (int Status, object? Body)> answer, IReadOnlyDictionary<string, string>? headers = null) =>
+        Declare(method, path, new Declared(new Query(), received =>
+        {
+            var (status, body) = answer(received);
+            return (status, Encode(body));
+        }, headers));
+
+    void Declare(string method, string path, Declared reply)
+    {
         var key = $"{method} {path}";
-        var json = body is null ? null : JsonSerializer.SerializeToNode(body, Web);
         lock (gate)
         {
-            replies[key] = [.. replies.GetValueOrDefault(key, []).Where(r => !Same(r.Query, query)), new Declared(query, status, json, headers)];
+            replies[key] = [.. replies.GetValueOrDefault(key, []).Where(r => !Same(r.Query, reply.Query)), reply];
         }
     }
+
+    static JsonNode? Encode(object? body) => body is null ? null : JsonSerializer.SerializeToNode(body, Web);
 
     public void TimeOut(string method, string path, Query? query = null)
     {
@@ -93,6 +107,14 @@ public sealed class Backend : IStandIn
         lock (gate)
         {
             timeouts[key] = [.. timeouts.GetValueOrDefault(key, []).Where(q => !Same(q, query)), query];
+        }
+    }
+
+    public void Heal()
+    {
+        lock (gate)
+        {
+            timeouts.Clear();
         }
     }
 
@@ -180,9 +202,10 @@ public sealed class Backend : IStandIn
         {
             Waiting? waiting = null;
             var timedOut = false;
+            var got = new Received(method, url.AbsolutePath, query, body);
             lock (gate)
             {
-                received.Add(new Received(method, url.AbsolutePath, query, body));
+                received.Add(got);
                 violations.AddRange(contract?.Request(method, url.AbsolutePath, body) ?? []);
                 if (Pick(Candidates(timeouts, method, url.AbsolutePath), query, q => q) is not null)
                 {
@@ -213,7 +236,7 @@ public sealed class Backend : IStandIn
                     trace.Released();
                 }
             }
-            return Fulfil(request, key, query);
+            return Fulfil(request, key, got);
         }
         finally
         {
@@ -221,27 +244,27 @@ public sealed class Backend : IStandIn
         }
     }
 
-    HttpResponseMessage Fulfil(HttpRequestMessage request, string key, IReadOnlyDictionary<string, StringValues> query)
+    HttpResponseMessage Fulfil(HttpRequestMessage request, string key, Received got)
     {
-        var url = request.RequestUri!;
         Declared? reply;
         lock (gate)
         {
-            reply = Pick(Candidates(replies, request.Method.Method, url.AbsolutePath), query, r => r.Query);
+            reply = Pick(Candidates(replies, got.Method, got.Path), got.Query, r => r.Query);
             if (reply is null)
             {
-                unanswered.Add(key + url.Query);
-            }
-            else
-            {
-                violations.AddRange(contract?.Response(request.Method.Method, url.AbsolutePath, reply.Status, reply.Body ?? new JsonObject()) ?? []);
+                unanswered.Add(key + request.RequestUri!.Query);
             }
         }
         if (reply is null)
         {
             return Respond(request, 501, new JsonObject { ["code"] = "unanswered", ["message"] = key });
         }
-        return Respond(request, reply.Status, reply.Status == 204 ? null : reply.Body ?? new JsonObject(), reply.Headers);
+        var (status, body) = reply.Answer(got);
+        lock (gate)
+        {
+            violations.AddRange(contract?.Response(got.Method, got.Path, status, body ?? new JsonObject()) ?? []);
+        }
+        return Respond(request, status, status == 204 ? null : body ?? new JsonObject(), reply.Headers);
     }
 
     static HttpResponseMessage Respond(HttpRequestMessage request, int status, JsonNode? body, IReadOnlyDictionary<string, string>? headers = null)

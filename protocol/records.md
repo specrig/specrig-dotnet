@@ -94,7 +94,10 @@ the next input, is what it **sends**.
 A **branch** is the cases that, having received the input, sent the same messages in
 the same order, or were refused the same way. A block sent again straight after
 itself is one pass of a loop, so the number of items a case had does not split its
-branch. A **refusal** is named by its status and what the service says it is:
+branch. Threads started at one place — goroutines a loop starts — begin their calls
+in an order of chance: a writer that can tell them apart puts what they sent in its
+places in the order of its names, and one that cannot keeps the order the calls
+began in. A **refusal** is named by its status and what the service says it is:
 `HTTP 404 order_not_found` from the body's `type` — not a URI — and
 `NotFound order_not_found` from gRPC's code, as Go's `codes.String()` spells it
 (`Canceled`), and the lowercased reason of the status's `ErrorInfo`. An event a

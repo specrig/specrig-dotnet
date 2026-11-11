@@ -413,7 +413,10 @@ it, with a property for each neighbour `Harness.cs` names. One over HTTP takes:
   call below, and the exact path wins;
 - `harness.<Neighbour>.ReplyTo(method, path, query, status, body)` — the same,
   for a request whose query has these values;
-- `harness.<Neighbour>.TimeOut(method, path)` — it not answering in time;
+- `harness.<Neighbour>.ReplyWith(method, path, answer)` — the answer worked out
+  from each request, `(status, body)`;
+- `harness.<Neighbour>.TimeOut(method, path)` — it not answering in time, until
+  `harness.<Neighbour>.Heal()`;
 - `harness.<Neighbour>.Requests(method, path)` — what reached it, for a `Then`.
 
 One over gRPC takes:

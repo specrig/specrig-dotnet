@@ -278,6 +278,74 @@ public class BackendTests
         Assert.Empty(shop.Unreleased);
     }
 
+    [Fact]
+    public async Task Heal_lifts_every_timeout_and_keeps_the_replies()
+    {
+        shop.Reply("GET", "/items/2", 200, new { id = "2" });
+        shop.TimeOut("GET", "/items/1");
+        shop.TimeOut("GET", "/items/2", new Query { ["view"] = "full" });
+        shop.Reply("GET", "/items/1", 200, new { id = "1" });
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() => client.GetAsync("https://shop.test/items/1"));
+        shop.Heal();
+
+        Assert.Equal("1", (await client.GetFromJsonAsync<Item>("https://shop.test/items/1"))!.Id);
+        Assert.Equal("2", (await client.GetFromJsonAsync<Item>("https://shop.test/items/2?view=full"))!.Id);
+    }
+
+    [Fact]
+    public async Task An_answer_is_worked_out_from_each_request()
+    {
+        shop.ReplyWith("GET", "/items/{id}", r => (200, new { id = r.Path.Split('/')[^1] }), new Dictionary<string, string> { ["X-Shard"] = "own" });
+
+        foreach (var id in new[] { "1", "2" })
+        {
+            var answer = await client.GetAsync($"https://shop.test/items/{id}");
+            Assert.Equal(id, (await answer.Content.ReadFromJsonAsync<Item>())!.Id);
+            Assert.Equal("own", Assert.Single(answer.Headers.GetValues("X-Shard")));
+        }
+        Assert.Empty(shop.Violations);
+    }
+
+    [Fact]
+    public async Task An_answer_may_change_with_what_reached_the_neighbour()
+    {
+        shop.ReplyWith("GET", "/items/1", _ =>
+        {
+            if (shop.Requests("GET", "/items/1").Count == 1)
+            {
+                return (404, new { code = 7, message = "not yet" });
+            }
+            return (200, new { id = "1" });
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("https://shop.test/items/1")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("https://shop.test/items/1")).StatusCode);
+        Assert.Empty(shop.Violations);
+    }
+
+    [Fact]
+    public async Task An_answer_worked_out_is_a_reply_naming_no_query()
+    {
+        shop.ReplyWith("GET", "/items/1", _ => (200, new { id = "worked out" }));
+        shop.ReplyTo("GET", "/items/1", new Query { ["view"] = "full" }, 200, new { id = "full" });
+
+        Assert.Equal("worked out", (await client.GetFromJsonAsync<Item>("https://shop.test/items/1?view=short"))!.Id);
+        Assert.Equal("full", (await client.GetFromJsonAsync<Item>("https://shop.test/items/1?view=full"))!.Id);
+        shop.Reply("GET", "/items/1", 200, new { id = "declared" });
+        Assert.Equal("declared", (await client.GetFromJsonAsync<Item>("https://shop.test/items/1"))!.Id);
+    }
+
+    [Fact]
+    public async Task The_contract_checks_an_answer_worked_out()
+    {
+        shop.ReplyWith("GET", "/items/{id}", _ => (200, new { id = 7 }));
+
+        await client.GetAsync("https://shop.test/items/7");
+
+        Assert.Contains("/items/7", Assert.Single(shop.Violations));
+    }
+
     sealed record Item(string Id);
 
     sealed record Failure(int Code, string Message);

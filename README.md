@@ -234,7 +234,9 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 |---|---|
 | `harness.<Backend>.Reply(method, path, status, body, headers?)` | what the neighbour answers, with the headers given |
 | `harness.<Backend>.ReplyTo(method, path, query, status, body, headers?)` | the same, for a request whose query has these values; the reply naming the most of them wins |
-| `harness.<Backend>.TimeOut(method, path, query?)` | the requests the query takes are not answered: the client meets the timeout it would meet, at once |
+| `harness.<Backend>.ReplyWith(method, path, answer, headers?)` | the answer worked out from each request: `answer` takes the `Received` and gives `(status, body)`; a reply naming no query, checked as the others |
+| `harness.<Backend>.TimeOut(method, path, query?)` | the requests the query takes are not answered: the client meets the timeout it would meet, at once; no reply lifts it |
+| `harness.<Backend>.Heal()` | the neighbour answers again: every `TimeOut` is lifted, the replies stay |
 | `harness.<Backend>.Hold(method, path, query?)` | the requests the query takes wait until a step releases them; the hold naming the most of the query takes a request |
 | `harness.<Backend>.Release(method, path, query?)` | answers what that hold kept waiting with what the neighbour answers by then, and what comes after it at once |
 | `harness.<Backend>.Requests(method, path)` | what reached the neighbour, with query and body |
@@ -255,7 +257,7 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 | `harness.Bus.FailWith(error?)` | publishing throws what a closed connection throws, or the error given, until the next case |
 
 A path in braces — `/orders/{id}` — takes any one segment wherever a step names a
-path: `Reply`, `ReplyTo`, `TimeOut`, `Hold`, `Release` and `Requests`. A declaration
+path: `Reply`, `ReplyTo`, `ReplyWith`, `TimeOut`, `Hold`, `Release` and `Requests`. A declaration
 with the exact path wins over a template, and of two templates the first declared
 does; the contract check and the record name the request by its real path.
 
