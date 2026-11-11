@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Gherkin;
 
 namespace Specrig;
 
@@ -11,6 +12,8 @@ public sealed record Case(string File, string Feature, string Title, bool Ignore
 
 public sealed class Features
 {
+    static readonly GherkinDialectProvider dialects = new();
+
     readonly List<Case> cases = [];
 
     public Features(string dir)
@@ -45,6 +48,8 @@ public sealed class Features
 
     static List<Case> Parse(string file, string[] lines)
     {
+        var dialect = Dialect(lines);
+        string[] scenarios = [.. dialect.ScenarioKeywords, .. dialect.ScenarioOutlineKeywords];
         var found = new List<Case>();
         var feature = "";
         var featureIgnored = false;
@@ -60,14 +65,14 @@ public sealed class Features
                 tags.AddRange(line.Split(' ', StringSplitOptions.RemoveEmptyEntries));
                 continue;
             }
-            if (line.StartsWith("Feature:"))
+            if (Titled(line, dialect.FeatureKeywords) is { } name)
             {
-                feature = line["Feature:".Length..].Trim();
+                feature = name;
                 featureIgnored = tags.Contains("@ignore");
                 tags.Clear();
                 continue;
             }
-            if (Scenario(line) is { } title)
+            if (Titled(line, scenarios) is { } title)
             {
                 outline = new Case(file, feature, title, featureIgnored || tags.Contains("@ignore"));
                 found.Add(outline);
@@ -75,7 +80,7 @@ public sealed class Features
                 rowsIgnored = null;
                 continue;
             }
-            if (outline is not null && (line.StartsWith("Examples:") || line.StartsWith("Scenarios:")))
+            if (outline is not null && Titled(line, dialect.ExamplesKeywords) is not null)
             {
                 // An outline runs as its rows, never under its own title.
                 found.RemoveAll(c => ReferenceEquals(c, outline));
@@ -117,15 +122,40 @@ public sealed class Features
             .Select(m => Regex.Replace(m.Value[..^1], @"\\[|\\n]", e => e.Value == @"\n" ? "\n" : e.Value[1..]).Trim())
             .ToArray();
 
-    static string? Scenario(string line)
+    static string? Titled(string line, string[] keywords)
     {
-        foreach (var keyword in (string[])["Scenario Outline:", "Scenario Template:", "Scenario:", "Example:"])
+        foreach (var keyword in keywords)
         {
-            if (line.StartsWith(keyword))
+            if (line.StartsWith($"{keyword}:"))
             {
-                return line[keyword.Length..].Trim();
+                return line[(keyword.Length + 1)..].Trim();
             }
         }
         return null;
+    }
+
+    // As gherkin reads it: only the lines before the first that is neither blank nor a comment may name it.
+    static GherkinDialect Dialect(string[] lines)
+    {
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (Regex.Match(line, @"^#\s*language\s*:\s*([a-zA-Z\-_]+)$") is { Success: true } directive)
+            {
+                try
+                {
+                    return dialects.GetDialect(directive.Groups[1].Value, null);
+                }
+                catch (NoSuchLanguageException)
+                {
+                    return dialects.DefaultDialect;
+                }
+            }
+            if (line.Length > 0 && !line.StartsWith('#'))
+            {
+                break;
+            }
+        }
+        return dialects.DefaultDialect;
     }
 }

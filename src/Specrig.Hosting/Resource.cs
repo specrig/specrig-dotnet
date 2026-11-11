@@ -20,5 +20,7 @@ public interface IResource
 
     Task Reset(CancellationToken cancel);
 
+    Task Arm(CancellationToken cancel) => Task.CompletedTask;
+
     IEnumerable<string> Failures() => [];
 }

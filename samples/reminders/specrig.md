@@ -408,9 +408,12 @@ the answer.
 **The harness** is specrig, set up by `tests/internal/Harness.cs`. Steps receive
 it, with a property for each neighbour `Harness.cs` names. One over HTTP takes:
 
-- `harness.<Neighbour>.Reply(method, path, status, body)` — what it answers;
+- `harness.<Neighbour>.Reply(method, path, status, body, headers)` — what it
+  answers; a segment in braces, `/orders/{id}`, takes any value here and in every
+  call below, and the exact path wins;
 - `harness.<Neighbour>.ReplyTo(method, path, query, status, body)` — the same,
   for a request whose query has these values;
+- `harness.<Neighbour>.TimeOut(method, path)` — it not answering in time;
 - `harness.<Neighbour>.Requests(method, path)` — what reached it, for a `Then`.
 
 One over gRPC takes:
@@ -429,6 +432,14 @@ service sends, is checked against it, and a route, a status or a body the
 contract does not have fails the test; one without is checked by nothing but the
 cases. A gRPC neighbour's contract is its services' descriptors: a method they
 do not have, or an answer of a type the method does not return, fails the test.
+
+**An outage is not a replacement.** `harness.<Resource>.FailWith()` takes the
+database, the cache or the bus away until the next case. A write that fails
+halfway is not an outage: `harness.<Database>.Refuse(table)` makes one table
+refuse writes, `RefuseAfter(table, rows)` lets that many rows through first, and
+reads keep working, so a `Then` can check what the failed write left;
+`RefuseCommit(table)` fails only the commit. `Heal()` is the database coming
+back: it ends the fault and every refusal and keeps the rows.
 
 **What may be stood in for is given, not chosen.** `tests/internal/` is
 read-only. A case that needs another neighbour, or an answer the stand-in cannot

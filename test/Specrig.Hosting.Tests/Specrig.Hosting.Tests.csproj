@@ -17,6 +17,7 @@
     <ProjectReference Include="../../src/Specrig.Postgres/Specrig.Postgres.csproj" />
     <ProjectReference Include="../../src/Specrig.Grpc/Specrig.Grpc.csproj" />
     <ProjectReference Include="../../samples/shop/src/Shop.csproj" />
+    <ProjectReference Include="../fixtures/starting/src/Starting.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

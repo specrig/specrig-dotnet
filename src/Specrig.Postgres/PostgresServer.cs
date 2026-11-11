@@ -8,6 +8,27 @@ sealed class PostgresServer
 {
     const string Mark = "specrig ";
     const string Copies = "specrig_baseline";
+    const string Refusals = "specrig_refusal";
+
+    const string Lifting = $"DROP SCHEMA IF EXISTS {Refusals} CASCADE";
+
+    const string RefusalSetup = $$"""
+        CREATE SCHEMA IF NOT EXISTS {{Refusals}};
+        CREATE TABLE IF NOT EXISTS {{Refusals}}.quota (relation oid, name text, remaining int NOT NULL, PRIMARY KEY (relation, name));
+        CREATE OR REPLACE FUNCTION {{Refusals}}.refuse() RETURNS trigger LANGUAGE plpgsql AS $$
+        DECLARE
+            rest int;
+        BEGIN
+            UPDATE {{Refusals}}.quota SET remaining = remaining - 1 WHERE relation = tg_relid AND name = tg_name RETURNING remaining INTO rest;
+            IF rest < 0 THEN
+                RAISE EXCEPTION 'specrig: % on % is refused', lower(tg_op), tg_table_name;
+            END IF;
+            IF tg_op = 'DELETE' THEN
+                RETURN old;
+            END IF;
+            RETURN new;
+        END $$;
+        """;
 
     readonly Lock gate = new();
     readonly string maintenance;
@@ -80,7 +101,7 @@ sealed class PostgresServer
         await using var connection = new NpgsqlConnection(Address);
         await connection.OpenAsync(cancel);
         var found = await Rows(connection,
-            $"SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema', '{Copies}')",
+            $"SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema', '{Copies}', '{Refusals}')",
             row => (Schema: row.GetString(0), Name: row.GetString(1)), cancel);
         await Execute(connection, $"DROP SCHEMA IF EXISTS {Copies} CASCADE", cancel);
         var tables = new List<string>();
@@ -124,6 +145,7 @@ sealed class PostgresServer
         var (tables, restores, sequences) = baseline ?? throw new InvalidOperationException("postgres is reset before it is migrated");
         await using var connection = new NpgsqlConnection(Address);
         await connection.OpenAsync(cancel);
+        await Execute(connection, Lifting, cancel);
         await using var transaction = await connection.BeginTransactionAsync(cancel);
         if (restores.Count > 0)
         {
@@ -151,6 +173,41 @@ sealed class PostgresServer
                 sequences.Select(s => s.Name).ToArray(), sequences.Select(s => s.Value).ToArray(), sequences.Select(s => s.Called).ToArray());
         }
         await transaction.CommitAsync(cancel);
+    }
+
+    public async Task Refuse(Refusal refusal, CancellationToken cancel)
+    {
+        var table = Relation(refusal.Table);
+        var writes = refusal.Writes.Select(write => write.ToString().ToLowerInvariant()).ToList();
+        var name = $"specrig_refuse_{(refusal.Commit ? "commit_" : "")}{string.Join('_', writes)}";
+        var events = string.Join(" OR ", writes);
+        var trigger = refusal.Commit
+            ? $"CREATE CONSTRAINT TRIGGER {name} AFTER {events} ON {table} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW"
+            : $"CREATE TRIGGER {name} BEFORE {events} ON {table} FOR EACH ROW";
+        try
+        {
+            await using var connection = new NpgsqlConnection(Address);
+            await connection.OpenAsync(cancel);
+            await using var transaction = await connection.BeginTransactionAsync(cancel);
+            await Execute(connection, RefusalSetup, cancel);
+            await Execute(connection,
+                $"INSERT INTO {Refusals}.quota (relation, name, remaining) VALUES ($1::regclass, $2, $3) ON CONFLICT (relation, name) DO UPDATE SET remaining = excluded.remaining",
+                cancel, table, name, refusal.Rows);
+            await Execute(connection, $"DROP TRIGGER IF EXISTS {name} ON {table}", cancel);
+            await Execute(connection, $"{trigger} EXECUTE FUNCTION {Refusals}.refuse()", cancel);
+            await transaction.CommitAsync(cancel);
+        }
+        catch (PostgresException e)
+        {
+            throw new InvalidOperationException($"postgres: cannot refuse writes to {refusal.Table}: {e.MessageText}", e);
+        }
+    }
+
+    public async Task Lift(CancellationToken cancel)
+    {
+        await using var connection = new NpgsqlConnection(Address);
+        await connection.OpenAsync(cancel);
+        await Execute(connection, Lifting, cancel);
     }
 
     async Task Down()
@@ -213,6 +270,8 @@ sealed class PostgresServer
     }
 
     static string Quoted(string name) => $"\"{name.Replace("\"", "\"\"")}\"";
+
+    static string Relation(string table) => string.Join('.', table.Split('.', 2).Select(Quoted));
 
     sealed record Baseline(IReadOnlyList<string> Tables, IReadOnlyList<string> Restores, IReadOnlyList<Sequence> Sequences);
 

@@ -36,6 +36,7 @@ public abstract class Rig : IDisposable
     readonly IReadOnlyList<IResource> resources;
     readonly StandIns standIns;
     Booted? booted;
+    bool starting;
 
     // Not every runner ends a run where a hook can see it; a process exit comes to them all.
     static Rig() => AppDomain.CurrentDomain.ProcessExit += (_, _) => EndRun().ContinueWith(_ => { }, TaskScheduler.Default).Wait();
@@ -97,6 +98,8 @@ public abstract class Rig : IDisposable
     protected virtual Grants Allow => [];
 
     protected virtual Workers Running => [];
+
+    protected virtual Task Seed(IServiceProvider services) => Task.CompletedTask;
 
     protected abstract Assembly Program { get; }
 
@@ -208,16 +211,35 @@ public abstract class Rig : IDisposable
 
     sealed record Booted(HostRun Run, IHost Host, HttpClient? Http);
 
-    Booted Boot() => booted ??= Start();
+    Booted Boot()
+    {
+        if (booted is not null)
+        {
+            return booted;
+        }
+        if (starting)
+        {
+            throw new InvalidOperationException($"{Service} is starting: Seed writes through the services it is given, not through the harness");
+        }
+        starting = true;
+        try
+        {
+            return booted = Start();
+        }
+        finally
+        {
+            starting = false;
+        }
+    }
 
     // The host's thread carries the case's mark, and so does everything the host starts from it.
-    HostRun Started(string[] args)
+    HostRun Started(string[] args, Func<IHost, Task>? ready = null)
     {
         var before = Bypass.Current.Value;
         Bypass.Current.Value = standIns;
         try
         {
-            return HostRun.Start(Program, args, Configure);
+            return HostRun.Start(Program, args, Configure, ready);
         }
         finally
         {
@@ -231,12 +253,14 @@ public abstract class Rig : IDisposable
         {
             addresses[resource] = resource.Provision(Service, CancellationToken.None).GetAwaiter().GetResult();
         }
-        var run = Started([.. Arguments()]);
+        var run = Started([.. Arguments()], Ready);
         try
         {
             var host = run.Started().GetAwaiter().GetResult();
-            Answered(host.Services.GetRequiredService<IConfiguration>());
-            Ready(host.Services).GetAwaiter().GetResult();
+            foreach (var resource in resources)
+            {
+                resource.Arm(CancellationToken.None).GetAwaiter().GetResult();
+            }
             var server = host.Services.GetService<IServer>() as TestServer;
             return new Booted(run, host, server is null ? null : new HttpClient(server.CreateHandler()) { BaseAddress = server.BaseAddress });
         }
@@ -248,13 +272,15 @@ public abstract class Rig : IDisposable
         }
     }
 
-    async Task Ready(IServiceProvider services)
+    async Task Ready(IHost host)
     {
+        Answered(host.Services.GetRequiredService<IConfiguration>());
         foreach (var resource in resources)
         {
-            await resource.Migrate(services, CancellationToken.None);
+            await resource.Migrate(host.Services, CancellationToken.None);
             await resource.Reset(CancellationToken.None);
         }
+        await Seed(host.Services);
     }
 
     // On the command line, so the answers win over appsettings and the environment

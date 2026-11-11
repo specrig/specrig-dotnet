@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -18,15 +19,16 @@ public sealed class Backend : IStandIn
 {
     internal static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    sealed record Declared(Query Query, int Status, JsonNode? Body);
+    sealed record Declared(Query Query, int Status, JsonNode? Body, IReadOnlyDictionary<string, string>? Headers);
 
     sealed record Waiting(string Request, TaskCompletionSource Released, CancellationToken Cancel);
 
     sealed record Holding(Query Query, List<Waiting> Waiting);
 
     readonly Lock gate = new();
-    readonly Dictionary<string, List<Declared>> replies = [];
-    readonly Dictionary<string, List<Holding>> holds = [];
+    readonly OrderedDictionary<string, List<Declared>> replies = [];
+    readonly OrderedDictionary<string, List<Holding>> holds = [];
+    readonly OrderedDictionary<string, List<Query>> timeouts = [];
     readonly List<Received> received = [];
     readonly List<string> unanswered = [];
     readonly List<string> violations = [];
@@ -71,16 +73,26 @@ public sealed class Backend : IStandIn
         }
     }
 
-    public void Reply(string method, string path, int status, object? body = null) =>
-        ReplyTo(method, path, new Query(), status, body);
+    public void Reply(string method, string path, int status, object? body = null, IReadOnlyDictionary<string, string>? headers = null) =>
+        ReplyTo(method, path, new Query(), status, body, headers);
 
-    public void ReplyTo(string method, string path, Query query, int status, object? body = null)
+    public void ReplyTo(string method, string path, Query query, int status, object? body = null, IReadOnlyDictionary<string, string>? headers = null)
     {
         var key = $"{method} {path}";
         var json = body is null ? null : JsonSerializer.SerializeToNode(body, Web);
         lock (gate)
         {
-            replies[key] = [.. replies.GetValueOrDefault(key, []).Where(r => !Same(r.Query, query)), new Declared(query, status, json)];
+            replies[key] = [.. replies.GetValueOrDefault(key, []).Where(r => !Same(r.Query, query)), new Declared(query, status, json, headers)];
+        }
+    }
+
+    public void TimeOut(string method, string path, Query? query = null)
+    {
+        var key = $"{method} {path}";
+        query ??= new Query();
+        lock (gate)
+        {
+            timeouts[key] = [.. timeouts.GetValueOrDefault(key, []).Where(q => !Same(q, query)), query];
         }
     }
 
@@ -116,7 +128,7 @@ public sealed class Backend : IStandIn
     {
         lock (gate)
         {
-            return [.. received.Where(r => r.Method == method && r.Path == path)];
+            return [.. received.Where(r => r.Method == method && Takes(path, r.Path))];
         }
     }
 
@@ -167,15 +179,27 @@ public sealed class Backend : IStandIn
         try
         {
             Waiting? waiting = null;
+            var timedOut = false;
             lock (gate)
             {
                 received.Add(new Received(method, url.AbsolutePath, query, body));
                 violations.AddRange(contract?.Request(method, url.AbsolutePath, body) ?? []);
-                if (Pick(holds.GetValueOrDefault(key, []), query, h => h.Query) is { } hold)
+                if (Pick(Candidates(timeouts, method, url.AbsolutePath), query, q => q) is not null)
+                {
+                    timedOut = true;
+                }
+                else if (Pick(Candidates(holds, method, url.AbsolutePath), query, h => h.Query) is { } hold)
                 {
                     waiting = new Waiting(key + url.Query, new(TaskCreationOptions.RunContinuationsAsynchronously), cancel);
                     hold.Waiting.Add(waiting);
                 }
+            }
+            if (timedOut)
+            {
+                // The client's own timeout is not visible from under it, so the message carries the default.
+                throw new TaskCanceledException(
+                    "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+                    new TimeoutException("The operation was canceled."));
             }
             if (waiting is not null)
             {
@@ -203,7 +227,7 @@ public sealed class Backend : IStandIn
         Declared? reply;
         lock (gate)
         {
-            reply = Pick(replies.GetValueOrDefault(key, []), query, r => r.Query);
+            reply = Pick(Candidates(replies, request.Method.Method, url.AbsolutePath), query, r => r.Query);
             if (reply is null)
             {
                 unanswered.Add(key + url.Query);
@@ -217,17 +241,43 @@ public sealed class Backend : IStandIn
         {
             return Respond(request, 501, new JsonObject { ["code"] = "unanswered", ["message"] = key });
         }
-        return Respond(request, reply.Status, reply.Status == 204 ? null : reply.Body ?? new JsonObject());
+        return Respond(request, reply.Status, reply.Status == 204 ? null : reply.Body ?? new JsonObject(), reply.Headers);
     }
 
-    static HttpResponseMessage Respond(HttpRequestMessage request, int status, JsonNode? body)
+    static HttpResponseMessage Respond(HttpRequestMessage request, int status, JsonNode? body, IReadOnlyDictionary<string, string>? headers = null)
     {
         var response = new HttpResponseMessage((HttpStatusCode)status) { RequestMessage = request };
         if (body is not null)
         {
             response.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         }
+        foreach (var (name, value) in headers ?? ReadOnlyDictionary<string, string>.Empty)
+        {
+            if (!response.Headers.TryAddWithoutValidation(name, value))
+            {
+                response.Content ??= new ByteArrayContent([]);
+                response.Content.Headers.Remove(name);
+                response.Content.Headers.TryAddWithoutValidation(name, value);
+            }
+        }
         return response;
+    }
+
+    static List<T> Candidates<T>(OrderedDictionary<string, List<T>> declarations, string method, string path)
+    {
+        if (declarations.TryGetValue($"{method} {path}", out var exact) && exact.Count > 0)
+        {
+            return exact;
+        }
+        var prefix = $"{method} ";
+        return declarations.FirstOrDefault(d => d.Value.Count > 0 && d.Key.StartsWith(prefix) && Takes(d.Key[prefix.Length..], path)).Value ?? [];
+    }
+
+    static bool Takes(string template, string path)
+    {
+        var segments = template.Split('/');
+        var wanted = path.Split('/');
+        return segments.Length == wanted.Length && segments.Zip(wanted).All(s => s.First == s.Second || s.First is ['{', .., '}']);
     }
 
     static T? Pick<T>(IEnumerable<T> candidates, IReadOnlyDictionary<string, StringValues> query, Func<T, Query> of) where T : class

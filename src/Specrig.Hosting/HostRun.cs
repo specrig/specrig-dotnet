@@ -13,18 +13,20 @@ sealed class HostRun : IObserver<DiagnosticListener>, IObserver<KeyValuePair<str
     static readonly AsyncLocal<HostRun?> starting = new();
 
     readonly Action<IServiceCollection> configure;
+    readonly Func<IHost, Task>? ready;
     readonly TaskCompletionSource<IHost> built = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly TaskCompletionSource<int> exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly List<IDisposable> subscriptions = [];
 
-    HostRun(Action<IServiceCollection> configure) => this.configure = configure;
+    HostRun(Action<IServiceCollection> configure, Func<IHost, Task>? ready) => (this.configure, this.ready) = (configure, ready);
 
     public Task<int> Exited => exited.Task;
 
-    public static HostRun Start(Assembly program, string[] args, Action<IServiceCollection> configure)
+    // ready blocks Program before Build returns, so what Program does after it sees what ready made.
+    public static HostRun Start(Assembly program, string[] args, Action<IServiceCollection> configure, Func<IHost, Task>? ready = null)
     {
         var entry = program.EntryPoint ?? throw new InvalidOperationException($"{program.GetName().Name} has no entry point");
-        var run = new HostRun(configure);
+        var run = new HostRun(configure, ready);
         lock (run.subscriptions)
         {
             run.subscriptions.Add(DiagnosticListener.AllListeners.Subscribe(run));
@@ -116,6 +118,16 @@ sealed class HostRun : IObserver<DiagnosticListener>, IObserver<KeyValuePair<str
         }
         else if (e.Key == "HostBuilt" && e.Value is IHost host)
         {
+            try
+            {
+                ready?.Invoke(host).GetAwaiter().GetResult();
+            }
+            catch (Exception failure)
+            {
+                built.TrySetException(failure);
+                host.Dispose();
+                throw;
+            }
             built.TrySetResult(host);
         }
     }

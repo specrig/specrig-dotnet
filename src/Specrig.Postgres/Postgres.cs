@@ -10,6 +10,15 @@ using Npgsql;
 
 namespace Specrig;
 
+public enum Write
+{
+    Insert,
+    Update,
+    Delete,
+}
+
+sealed record Refusal(string Table, int Rows, bool Commit, IReadOnlyList<Write> Writes);
+
 public sealed class Postgres(string setting) : IResource, IDisposable
 {
     static readonly ConcurrentDictionary<string, Lazy<Task<PostgresServer>>> servers = new();
@@ -20,10 +29,12 @@ public sealed class Postgres(string setting) : IResource, IDisposable
 
     readonly Fault fault = new();
     readonly List<Type> contexts = [];
+    readonly List<Refusal> pending = [];
     PostgresServer? server;
     Gate? gate;
-    bool ready;
+    Exception? failing;
     bool refusing;
+    bool armed;
 
     public string Setting { get; } = setting;
 
@@ -37,11 +48,34 @@ public sealed class Postgres(string setting) : IResource, IDisposable
 
     public void FailWith(Exception? error)
     {
-        fault.Error = error ?? new NpgsqlException("the database refuses connections", new SocketException((int)SocketError.ConnectionRefused));
+        failing = error ?? new NpgsqlException("the database refuses connections", new SocketException((int)SocketError.ConnectionRefused));
         refusing = error is null;
-        if (refusing && ready)
+        if (armed)
         {
-            gate?.Close();
+            Fail();
+        }
+    }
+
+    public Task Refuse(string table, params Write[] writes) => Refuse(table, 0, false, writes);
+
+    public Task RefuseAfter(string table, int rows, params Write[] writes) => Refuse(table, rows, false, writes);
+
+    public Task RefuseCommit(string table, params Write[] writes) => Refuse(table, 0, true, writes);
+
+    public async Task Heal()
+    {
+        failing = fault.Error = null;
+        if (refusing)
+        {
+            refusing = false;
+            gate?.Open();
+            // What the gate dropped is still in the pools, and would fail its first command.
+            NpgsqlConnection.ClearAllPools();
+        }
+        pending.Clear();
+        if (server is not null)
+        {
+            await server.Lift(CancellationToken.None);
         }
     }
 
@@ -76,7 +110,6 @@ public sealed class Postgres(string setting) : IResource, IDisposable
 
     public Task Migrate(IServiceProvider services, CancellationToken cancel) => Server.Once(async () =>
     {
-        using var _ = fault.Suspend();
         await using var scope = services.CreateAsyncScope();
         foreach (var type in contexts)
         {
@@ -93,18 +126,53 @@ public sealed class Postgres(string setting) : IResource, IDisposable
         await Server.Discover(Keep, cancel);
     });
 
-    // A fault a step set before the boot waits for it: the migration goes through the gate too.
-    public async Task Reset(CancellationToken cancel)
+    public Task Reset(CancellationToken cancel) => Server.Reset(cancel);
+
+    // What a step set before the boot waits for the start: the migration, the seed and the start go through.
+    public async Task Arm(CancellationToken cancel)
     {
-        await Server.Reset(cancel);
-        ready = true;
+        armed = true;
+        foreach (var refusal in pending)
+        {
+            await Server.Refuse(refusal, cancel);
+        }
+        pending.Clear();
+        if (failing is not null)
+        {
+            Fail();
+        }
+    }
+
+    public void Dispose() => gate?.Dispose();
+
+    void Fail()
+    {
+        fault.Error = failing;
         if (refusing)
         {
             gate?.Close();
         }
     }
 
-    public void Dispose() => gate?.Dispose();
+    async Task Refuse(string table, int rows, bool commit, Write[] writes)
+    {
+        var refusal = new Refusal(table, rows, commit, Written(writes));
+        if (server is null)
+        {
+            pending.Add(refusal);
+            return;
+        }
+        await server.Refuse(refusal, CancellationToken.None);
+    }
+
+    static IReadOnlyList<Write> Written(Write[] writes)
+    {
+        foreach (var write in writes.Where(write => !Enum.IsDefined(write)))
+        {
+            throw new ArgumentOutOfRangeException(nameof(writes), write, "refuse an insert, update or delete");
+        }
+        return [.. Enum.GetValues<Write>().Where(write => writes.Length == 0 || writes.Contains(write))];
+    }
 
     // A context the container builds itself is the scope's to dispose, so the caller gets one of its own.
     static DbContext Context(IServiceProvider services, Type type)

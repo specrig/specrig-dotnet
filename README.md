@@ -232,8 +232,9 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 
 | | |
 |---|---|
-| `harness.<Backend>.Reply(method, path, status, body)` | what the neighbour answers |
-| `harness.<Backend>.ReplyTo(method, path, query, status, body)` | the same, for a request whose query has these values; the reply naming the most of them wins |
+| `harness.<Backend>.Reply(method, path, status, body, headers?)` | what the neighbour answers, with the headers given |
+| `harness.<Backend>.ReplyTo(method, path, query, status, body, headers?)` | the same, for a request whose query has these values; the reply naming the most of them wins |
+| `harness.<Backend>.TimeOut(method, path, query?)` | the requests the query takes are not answered: the client meets the timeout it would meet, at once |
 | `harness.<Backend>.Hold(method, path, query?)` | the requests the query takes wait until a step releases them; the hold naming the most of the query takes a request |
 | `harness.<Backend>.Release(method, path, query?)` | answers what that hold kept waiting with what the neighbour answers by then, and what comes after it at once |
 | `harness.<Backend>.Requests(method, path)` | what reached the neighbour, with query and body |
@@ -247,13 +248,22 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 | `harness.Logs` | what the service logged, collected under its real logger |
 | `harness.Clock` | the service's `TimeProvider`: it runs with the wall clock until a step sets it |
 | `harness.<Resource>.FailWith(error?)` | the resource refuses every client it handed out, until the next case |
+| `harness.Database.Heal()` | Postgres comes back mid-case: `FailWith` ends and every refusal below is lifted, the rows stay |
+| `harness.Database.Refuse(table, writes?)` | every insert, update or delete of the table, or only those named, fails in Postgres itself, for every connection, the case's own included; reads work |
+| `harness.Database.RefuseAfter(table, rows, writes?)` | the same after the first `rows` rows have gone through |
+| `harness.Database.RefuseCommit(table, writes?)` | the statements go through and the commit of a transaction that wrote the table fails |
 | `harness.Bus.FailWith(error?)` | publishing throws what a closed connection throws, or the error given, until the next case |
+
+A path in braces — `/orders/{id}` — takes any one segment wherever a step names a
+path: `Reply`, `ReplyTo`, `TimeOut`, `Hold`, `Release` and `Requests`. A declaration
+with the exact path wins over a template, and of two templates the first declared
+does; the contract check and the record name the request by its real path.
 
 The service boots at the first step that reaches it, so a `Given` declares and
 replaces before anything is built. Each case boots a service of its own: a
 singleton holding state does not carry it into the next case. The resources are
-provisioned once per run and put back before every case: Postgres as its
-migrations left it, Redis empty.
+provisioned once per run and put back before every case, before the service
+starts: Postgres as its migrations left it, Redis empty.
 
 A call no step answered gets a 501, or `Unimplemented` over gRPC, and fails the
 case, named. After the case, every request and every answer is checked against the
@@ -312,6 +322,7 @@ public sealed class Harness : Specrig.Harness<Program>
 | `Constants` | the other settings the harness answers, as given |
 | `Allow` | the services of the container a case may replace |
 | `Running` | the hosted services that run through every case, as they do in production: every one that binds a queue, and the workers a handler depends on |
+| `Seed(services)` | what production holds before the service starts that the migrations do not write and no case is about — the first administrator, say —, written through the service's own container, which is built and not yet started, into the resources just put back, before every start; `harness.Scope()` would boot the service again, so it goes through `services` |
 
 A grant is a type, so a renamed interface breaks the build instead of lingering in
 a list.
@@ -344,7 +355,8 @@ step delivers it, so the case says that the second half happens.
 
 A command runs `Program` again with its arguments, under the same harness: the
 host it builds is caught as the first one was, and its exit code is the step's
-result.
+result. The resources are those the service's host readied, as the case has left
+them: they are not put back, nor seeded, for the command.
 
 A job is resolved from the service's container and run by its `RunAsync`,
 `ExecuteAsync`, `Run` or `Execute`. A Quartz `IJob` runs as Quartz runs it: with
@@ -390,15 +402,16 @@ address, which may carry a password.
 
 The schema is the service's own: at the first boot of the run every EF Core
 `DbContext` the container registers — or makes through an `IDbContextFactory` — is
-migrated, or has its model's tables created where it has no migrations. Before
-every case each table is put back as the migrations left it, ids included: a row
-a migration wrote — a `HasData` seed, the states an order moves through, the root
-of a tree — stays, a case's own row goes, and the next id follows the seeded rows,
-or is 1 where there are none. Putting rows back turns foreign keys and triggers
-off for one transaction, which needs a superuser: the container has one, and
-migrations that write no rows need none. `__EFMigrationsHistory` is left as it
-is, and so is a table `Keep` names, with whatever a case wrote to it; the rows
-the migrations write need no `Keep`.
+migrated, or has its model's tables created where it has no migrations, once the
+host is built and before it starts, since a start may read its database. Before
+every case, before the service starts, each table is put back as the migrations
+left it, ids included: a row a migration wrote — a `HasData` seed, the states an
+order moves through, the root of a tree — stays, a case's own row goes, and the
+next id follows the seeded rows, or is 1 where there are none. Putting rows back
+turns foreign keys and triggers off for one transaction, which needs a superuser:
+the container has one, and migrations that write no rows need none.
+`__EFMigrationsHistory` is left as it is, and so is a table `Keep` names, with
+whatever a case wrote to it; the rows the migrations write need no `Keep`.
 
 The service reaches the database through a gate of the case's own, on loopback.
 `harness.Database.FailWith(null)` closes it: what connects is refused and what is
@@ -406,8 +419,22 @@ connected is dropped, whatever client the service talks through, and an EF Core
 context refuses its connection at once — an `NpgsqlException` over a refused
 socket, which the service meets as it would meet a database that is down, wrapped
 by Npgsql's execution strategy included. Another exception fails every EF Core
-context with that one. A fault a step sets before the boot waits for it, so the
-migration goes through; the next case boots whole.
+context with that one. A fault a step sets before the boot waits for the service
+to start, so the migration, the seed and the start go through; the next case boots
+whole. `harness.Database.Heal()` ends it within the case: the gate opens, the
+connections it dropped are forgotten, the error is cleared, and the rows stay.
+
+`harness.Database.Refuse("orders")` takes one table's writes instead of the
+database: every insert, update or delete on it raises `specrig: insert on orders is
+refused` in Postgres itself — for every connection, the case's own included — and
+reads work. Writes named — `Refuse("orders", Write.Delete)` — are the only ones
+refused. `RefuseAfter("orders", 2)` lets the first two rows through, and
+`RefuseCommit("orders")` lets the statements through and fails the commit of a
+transaction that wrote the table, the way a deferred constraint does. A table in a
+schema is named with it, `shop.orders`. A refusal a step sets before the boot
+waits for the start like a fault. Refusals are triggers in a schema of their own,
+`specrig_refusal`, which table discovery and the baseline never see; `Heal()` and
+the reset before the next case drop them.
 
 ## Redis
 
@@ -474,7 +501,8 @@ flight to it and from it, then 50 ms with nothing more.
 
 Every whole run rewrites it, a failing one included; a run narrowed by `--filter`
 writes nothing, which the harness tells by the scenarios that ran against the
-scenarios in `tests/feature/`, row by row of an outline's examples; one that ran and
+scenarios in `tests/feature/`, row by row of an outline's examples, each file read
+by the keywords of its `# language:` line, English where it has none; one that ran and
 is not among them fails, and the record does not hold it. Only the `description` fields are written by hand:
 they survive a rewrite, and one whose step is gone moves to `orphaned`, comes back
 with its step, and fails the case that ends the run meanwhile.
@@ -555,6 +583,8 @@ are let through, and the plugin says so once.
   the case, but the request has already left. A request on a thread that carries
   no case's mark is laid to every case alive; the suite runs its cases one at a
   time.
+- `TimeOut` throws what `HttpClient` throws when its `Timeout` passes, with the
+  default 100 seconds in the message: the stand-in cannot see the client's own.
 - A gRPC neighbour answers unary calls; a stream to it is not stood in for.
 - `RabbitMQ.Client` 7.x is the bus with an adapter, and its connection has to
   come from the container. A hosted service that consumes through another client
@@ -565,10 +595,12 @@ are let through, and the plugin says so once.
   `ExecuteAsync`, `Run` or `Execute`.
 - `Postgres` and `Redis` are the resources there are. Anything else is a resource
   of the service's own, an `IResource`: `Provision`, `Configure`, `Migrate`,
-  `Reset`, every one called in every case, and once per run the resource's own to
-  keep.
+  `Reset` and `Arm`, where what a step set before the boot takes effect once the
+  host has started, every one called in every case, and once per run the
+  resource's own to keep.
 - The database is migrated through EF Core alone; another migration tool is not
-  run. A fault other than a refusal reaches EF Core's contexts alone.
+  run. A fault other than a refusal reaches EF Core's contexts alone. A refusal is
+  a trigger on the table's rows, so a `TRUNCATE` goes through it.
 - `tests/surface.yaml` reads what the table above names: a request through a
   library it does not, MassTransit or Kafka say, is not in it.
 - A description that lost its anchor fails the run with an assembly cleanup

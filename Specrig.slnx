@@ -21,6 +21,7 @@
   </Folder>
   <Folder Name="/test/fixtures/">
     <Project Path="test/fixtures/gateway/src/Gateway.csproj" />
+    <Project Path="test/fixtures/starting/src/Starting.csproj" />
   </Folder>
   <Folder Name="/samples/" />
   <Folder Name="/samples/shop/">

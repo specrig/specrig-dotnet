@@ -101,7 +101,7 @@ system:
 |---|---|
 | `flows` | by way in: the `id`; `title` and `description`, written by hand and kept by `id`; the way in, `<service>: <message>`; `from`, the services whose code sends it; the steps |
 | `links` | by sender and message: what one traced service sends and another receives; `notes` names the fields the receiver's cases send and the sender's never do, a scalar where the other side has an object aside |
-| `untested` | a link the code has between two traced services and no case follows: an event bound exactly, a gRPC method — outgoing HTTP is not traced |
+| `untested` | a link the code has between two traced services and no case follows: an event bound exactly, a gRPC method, an HTTP request landing on a route — named by each route of the receiver that takes it, as `links` names them, and followed by a case of any |
 | `outside` | what a traced service sends that no traced service received: `received by …, no case took it`, `only a wildcard subscription: …`, `out of the system`, or `not traced` when no service has a surface |
 | `system` | the surfaces against each other, when any service has one; `{}` when that finds nothing |
 | `orphaned` | a flow's prose whose flow is gone, under the anchor `flow <id>`; it comes back with the flow |

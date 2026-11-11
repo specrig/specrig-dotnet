@@ -5,20 +5,21 @@ namespace Specrig;
 
 sealed class Gate : IDisposable
 {
-    readonly TcpListener listener = new(IPAddress.Loopback, 0);
     readonly List<Socket> open = [];
     readonly string host;
     readonly int port;
+    TcpListener listener = new(IPAddress.Loopback, 0);
     bool closed;
 
     public Gate(string host, int port)
     {
         (this.host, this.port) = (host, port);
         listener.Start();
-        _ = Accept();
+        Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        _ = Accept(listener);
     }
 
-    public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
+    public int Port { get; }
 
     public void Close()
     {
@@ -35,9 +36,25 @@ sealed class Gate : IDisposable
         }
     }
 
+    // On the port the service was given, which is the one it still connects to.
+    public void Open()
+    {
+        lock (open)
+        {
+            if (!closed)
+            {
+                return;
+            }
+            listener = new TcpListener(IPAddress.Loopback, Port);
+            listener.Start();
+            closed = false;
+            _ = Accept(listener);
+        }
+    }
+
     public void Dispose() => Close();
 
-    async Task Accept()
+    async Task Accept(TcpListener listener)
     {
         while (true)
         {

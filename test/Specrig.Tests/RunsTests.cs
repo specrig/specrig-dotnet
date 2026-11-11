@@ -69,6 +69,33 @@ public class RunsTests
     }
 
     [Fact]
+    public void A_whole_run_of_a_file_in_another_language_writes_the_record()
+    {
+        var runs = Of("""
+            # language: ru
+            Функция: Оплата
+
+              Сценарий: Клиент платит
+                Когда клиент платит
+
+              Структура сценария: Отказ в оплате в <валюта>
+                Когда клиент платит в <валюта>
+
+                Примеры:
+                  | валюта |
+                  | EUR    |
+                  | USD    |
+            """);
+
+        Assert.Empty(runs.Add("shop", "Оплата", "Клиент платит", [], Paid()));
+        Assert.Empty(runs.Add("shop", "Оплата", "Отказ в оплате в <валюта>", [("валюта", "EUR")], Paid()));
+        Assert.Empty(runs.Add("shop", "Оплата", "Отказ в оплате в <валюта>", [("валюта", "USD")], Paid()));
+
+        Assert.Equal(["pay.feature: Клиент платит", "pay.feature: Отказ в оплате в EUR", "pay.feature: Отказ в оплате в USD"],
+            Assert.Single(Flows.Read(FlowsFile)!.Inputs[0].Branches).Cases);
+    }
+
+    [Fact]
     public void A_run_without_one_row_of_an_outline_writes_nothing_and_says_nothing()
     {
         var runs = Of(Paying);

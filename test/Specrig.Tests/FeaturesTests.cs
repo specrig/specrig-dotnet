@@ -149,6 +149,57 @@ public class FeaturesTests
     }
 
     [Fact]
+    public void A_file_is_read_by_the_keywords_of_its_language()
+    {
+        var features = Write("ru.feature", """
+            # language: ru
+            Функция: Оплата
+
+              # Причина.
+              Сценарий: Клиент платит
+                Когда клиент платит
+
+              Структура сценария: Клиент платит в <валюта>
+                Когда клиент платит в <валюта>
+
+                Примеры:
+                  | валюта |
+                  | EUR    |
+                  | USD    |
+
+                @ignore
+                Примеры:
+                  | валюта |
+                  | GBP    |
+
+              Scenario: Not a case of this language
+                When it is read as English
+            """);
+
+        Assert.Equal([("Клиент платит", false), ("Клиент платит в EUR", false), ("Клиент платит в USD", false), ("Клиент платит в GBP", true)],
+            features.Cases.Select(c => (c.Title, c.Ignored)));
+        Assert.All(features.Cases, c => Assert.Equal("Оплата", c.Feature));
+        Assert.Equal("ru.feature: Клиент платит в USD", features.Find("Оплата", "Клиент платит в <валюта>", [("валюта", "USD")])!.Label);
+    }
+
+    [Fact]
+    public void The_language_is_named_below_comments_and_blank_lines_and_nowhere_else()
+    {
+        Write("ru.feature", "# the plan\n\n  # language: ru\nФункция: Оплата\n  Сценарий: Платит\n");
+        var features = Write("late.feature", "Feature: Late\n  # language: ru\n  Сценарий: Not read\n  Scenario: Read\n");
+
+        Assert.Equal(["late.feature: Read", "ru.feature: Платит"], features.Cases.Select(c => c.Label));
+    }
+
+    [Fact]
+    public void A_language_gherkin_does_not_know_is_read_as_english()
+    {
+        var features = Write("a.feature", "# language: xx\nFeature: A\n  Scenario: Read\n");
+
+        Assert.Equal(["Read"], features.Cases.Select(c => c.Title));
+    }
+
+    [Fact]
     public void A_row_in_examples_both_ignored_and_not_is_found_as_the_one_that_runs()
     {
         var features = Write("a.feature", """

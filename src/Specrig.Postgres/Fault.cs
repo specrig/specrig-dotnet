@@ -5,28 +5,14 @@ namespace Specrig;
 
 sealed class Fault
 {
-    readonly AsyncLocal<bool> suspended = new();
-
     public Exception? Error { get; set; }
-
-    // The resource's own work never fails: a migration runs through the service's own contexts.
-    public IDisposable Suspend()
-    {
-        suspended.Value = true;
-        return new Resumed(this);
-    }
 
     public void Check()
     {
-        if (Error is not null && !suspended.Value)
+        if (Error is not null)
         {
             throw Error;
         }
-    }
-
-    sealed class Resumed(Fault fault) : IDisposable
-    {
-        public void Dispose() => fault.suspended.Value = false;
     }
 }
 

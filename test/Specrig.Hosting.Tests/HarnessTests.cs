@@ -223,6 +223,43 @@ public class HarnessTests : IDisposable
     }
 
     [Fact]
+    public async Task A_database_that_is_healed_answers_again_within_the_case_with_its_rows()
+    {
+        await harness.Place(7);
+        harness.Database.FailWith(null);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => harness.Find(7));
+        Assert.IsType<NpgsqlException>(refused.InnerException);
+
+        await harness.Database.Heal();
+
+        Assert.NotNull(await harness.Find(7));
+    }
+
+    [Fact]
+    public async Task An_error_a_context_was_made_to_fail_with_ends_with_the_heal()
+    {
+        await harness.Place(7);
+        harness.Database.FailWith(new InvalidOperationException("the disk is full"));
+        Assert.Equal("the disk is full", (await Assert.ThrowsAsync<InvalidOperationException>(() => harness.Find(7))).Message);
+
+        await harness.Database.Heal();
+
+        Assert.NotNull(await harness.Find(7));
+    }
+
+    [Fact]
+    public async Task A_table_the_service_writes_can_be_refused_in_the_database_itself()
+    {
+        await harness.Place(7);
+        await harness.Database.Refuse("orders", Write.Insert);
+
+        var refused = await Assert.ThrowsAsync<DbUpdateException>(() => harness.Place(8));
+
+        Assert.Equal("specrig: insert on orders is refused", Assert.IsType<PostgresException>(refused.InnerException).MessageText);
+        Assert.NotNull(await harness.Find(7));
+    }
+
+    [Fact]
     public async Task A_database_that_fails_refuses_a_client_of_npgsql_s_own()
     {
         await harness.Run<RawQuery>();

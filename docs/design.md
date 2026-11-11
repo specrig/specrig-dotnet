@@ -71,12 +71,12 @@ verdict out, which the plugin runs against the rules every stack prints.
 
 | piece | built on |
 |---|---|
-| boot | the hosting library's diagnostic events, as `HostFactoryResolver` uses them — its sources package is not on nuget.org: `Program` runs on a thread of its own, and `HostBuilding` is where the stand-ins and the grants go in; environment `Production`, the application named after the service's assembly as `WebApplicationFactory` names it, one host per case |
+| boot | the hosting library's diagnostic events, as `HostFactoryResolver` uses them — its sources package is not on nuget.org: `Program` runs on a thread of its own, `HostBuilding` is where the stand-ins and the grants go in, and `HostBuilt` holds `Program` before `Build` returns while the resources are migrated, put back and seeded; environment `Production`, the application named after the service's assembly as `WebApplicationFactory` names it, one host per case |
 | the server | a `TestServer` registered as `IServer`, where the host has a server |
 | hosted services | removed but for the server and those `Running` names, the consumers among them |
 | a job | resolved from the container and run by its `RunAsync`, `ExecuteAsync`, `Run` or `Execute`; a Quartz `IJob` through `Specrig.Quartz`, with the detail the service registered, from a scheduler nobody started; the adapter is found by name beside the suite, so a suite need not name a type of it |
 | a command | `Program` run again with the verb and its arguments; the host it builds caught like the first |
-| stand-ins | an `IHttpMessageHandlerBuilderFilter` sets one primary handler under every client the container builds, after the client's own configuration — typed, named and `Grpc.Net.ClientFactory` alike; it routes by origin to an `IStandIn`, HTTP or gRPC |
+| stand-ins | an `IHttpMessageHandlerBuilderFilter` sets one primary handler under every client the container builds, after the client's own configuration — typed, named and `Grpc.Net.ClientFactory` alike; it routes by origin to an `IStandIn`, HTTP or gRPC; an HTTP one picks the declaration by the request's real path, a template in braces taking any one segment where no declaration names the path itself |
 | a request past them | the `HttpHandlerDiagnosticListener`: the stand-in replaced the handler that reports, so every request it reports went around. It is laid to the case whose mark the thread carries — set on the host's thread, an inbound request and a job — else to every case alive |
 | an HTTP contract | the OpenAPI document parsed from YAML; schemas validated by NJsonSchema with `components.schemas` rewritten to `definitions` |
 | a gRPC contract | the descriptors of the services one origin serves: frames decoded with the method's parser, an answer encoded, the status in the trailers `Grpc.Net.Client` reads |
@@ -84,14 +84,15 @@ verdict out, which the plugin runs against the rules every stack prints.
 | inbound HTTP | a middleware first in the pipeline names the call by the endpoint it matched |
 | inbound gRPC | the same middleware, by the request's path: the body copied as the server reads it, so a stream is not waited on, decoded by the request type's own parser; the refusal from the trailers, the reason from the rich status's `ErrorInfo` |
 | settings | `Program`'s command line, which the default builders read last, so the answers win over `appsettings.json` and the environment even for what `Program` reads before it builds the host; the keys the code reads come from the same Roslyn pass as `surface`, written to `tests/checks.yaml` |
-| resources | `IResource`: `Provision` before the boot answers its setting, `Configure` sees the container, `Migrate` and `Reset` follow the start; `Rig.Ending` takes what comes down when the run ends — the Reqnroll hook, or the process exit for any other runner |
-| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; the tables found after migrating, their rows copied aside to `specrig_baseline` and their sequences read; before every case, in one transaction under `session_replication_role = replica`, `TRUNCATE`, the copies inserted back and the sequences set where they stood |
+| resources | `IResource`: `Provision` before the boot answers its setting, `Configure` sees the container, `Migrate` and `Reset` follow the build and `Seed` the harness's hook after them, all before the host starts, `Arm` follows the start; `Rig.Ending` takes what comes down when the run ends — the Reqnroll hook, or the process exit for any other runner |
+| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; the tables found after migrating, their rows copied aside to `specrig_baseline` and their sequences read; before every case, in one transaction under `session_replication_role = replica`, `TRUNCATE`, the copies inserted back and the sequences set where they stood, the refusals dropped first |
 | Redis | Testcontainers, a container of the run's own, removed when it ends; `FLUSHDB` before every case |
-| a resource that goes down | for Postgres a loopback gate of the case's own, closed for a refusal, so every client fails, beside a connection and a command interceptor on every EF Core context for an error of the step's choosing; for Redis a proxy over the container's `IConnectionMultiplexer` and every database and batch it hands out |
+| a resource that goes down | for Postgres a loopback gate of the case's own, closed for a refusal, so every client fails, beside a connection and a command interceptor on every EF Core context for an error of the step's choosing; `Heal` reopens the gate on its port and clears the error; for Redis a proxy over the container's `IConnectionMultiplexer` and every database and batch it hands out |
+| a table that refuses writes | for Postgres row triggers, which raise in the server for every connection, a counter per trigger in a schema of its own, `specrig_refusal`, beside the baseline's: `RefuseAfter` counts rows down inside the writing transaction, so a rolled back row gives its place back, and `RefuseCommit` is a deferred constraint trigger on the same counter, so the commit is what fails; the reset and `Heal` drop the schema, and the triggers that depend on its function with it |
 | logs | `AddFakeLogging`: a provider beside the real ones, so a case reads what the production logger built |
 | clock | `TimeProvider` replaced by one that follows the wall clock until a step sets it, a `FakeTimeProvider` from then |
 | steps | Reqnroll: `[BeforeStep]` and its `StepDefinitionType` mark Given, When and Then; the hooks live in `Specrig.Reqnroll`, named in `reqnroll.json` |
-| `tests/flows.yaml` | the `[AfterScenario]` of the case that makes the run whole, because `dotnet test` shows a failure from `[AfterTestRun]` only by its type; a run is whole when the scenarios that ran are every scenario and every row of an outline's examples of `tests/feature/`, read by the English keywords, `@ignore` left out; a scenario that ran and is none of them fails, and the record does not hold it |
+| `tests/flows.yaml` | the `[AfterScenario]` of the case that makes the run whole, because `dotnet test` shows a failure from `[AfterTestRun]` only by its type; a run is whole when the scenarios that ran are every scenario and every row of an outline's examples of `tests/feature/`, each file read by the keywords of its `# language:` line through the dialects of the `Gherkin` package Reqnroll depends on, English by default, `@ignore` left out; a scenario that ran and is none of them fails, and the record does not hold it |
 | `tests/surface.yaml` | Roslyn over the service's project, through `MSBuildWorkspace`, restored first; generated files, under `obj/` or named `.g.cs`, are read for their types — an NSwag controller's routes among them — and not walked for calls |
 | rules | rules/1 of the protocol: its `modes.yaml` embedded in the tool, the layout `init` lays out as classes, default areas and the service's own from `specrig.yaml`; `specrig.md` is the protocol's text with this stack's slots, rendered from the same table and from nothing `init` was told, and the service's own `AGENTS.md` brings it in with one line |
 | distribution | NuGet, every package at one version, published by `.github/workflows/release.yml` for a tag `v<version>`; the tool in the service's local manifest, or run from a checkout |
@@ -119,10 +120,7 @@ declaration on either side.
 | the rest of `IChannel` | throws `NotSupportedException` naming the member, so a gap in the stand-in fails loudly instead of doing nothing |
 | `surface` | `publishes` at `BasicPublishAsync`'s routing key, `consumes` at `QueueBindAsync`'s, followed through constants, wrappers and their callers as the Go pass follows `Publish` and `QueueBind`; a key that is not a constant at the end is refused. A key bound with a wildcard is written as bound — `orders.*` — and the flow map reports what a wildcard alone takes, as it does for Go |
 
-Routing by the bindings is stricter than specrig-go, whose consumer recorder hands
-every delivery to the handler and keeps the bindings only to be asserted on.
-Here a binding with a typo is a red case, and nothing has to remember to assert
-on it.
+A binding with a typo is a red case, and nothing has to remember to assert on it.
 
 MassTransit, Kafka and the rest are adapters of their own, later, held to the
 same rule for the name. A MassTransit service links to a Go one only where it
@@ -164,12 +162,24 @@ before it. So a reset puts back the rows and the sequences the migrations left,
 as the Go, PHP and Python stacks do. Respawn can only delete, so the reset is
 plain SQL. Putting rows back turns foreign keys and triggers off for one
 transaction, which needs a superuser: the container has one, and migrations that
-write no rows need none.
+write no rows need none. A refusal lives in the database, so the reset drops it
+before it puts the rows back, as the Go stack's does.
+
+**The resources are ready before the service starts.** A start may read its
+database, and `Program` may do it right after `Build`: a hosted service that
+warms a cache, an administrator looked up before the server listens. A reset after
+the start would show it what the last case left, and the first case of a run an
+empty schema. So the host is built, `HostBuilt` holds `Program` on its thread
+while every resource is migrated and put back and `Seed` has written what
+production holds that no migration does, and only then does the host start. What
+a step set before the boot waits for the start the same way — `Arm` — or the
+service would meet its own database down at the first read.
 
 **A case's fault is the case's.** `FailWith` lives on the case's own resource
 object, the gate and the interceptors are the case's own, so the next case boots
-whole with nothing to heal. A migration runs through the service's contexts too,
-and is let through.
+whole with nothing to heal. A case that brings the database back itself calls
+`Heal`, which reopens the gate on the port the service still holds, forgets the
+connections it dropped, and lifts the refusals.
 
 **A service per case.** A singleton that keeps state — a cache, an in-memory
 queue — is the leak between cases nobody sees until the order changes. The

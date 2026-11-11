@@ -30,7 +30,55 @@ public class PostgresTests
 
     sealed class Database(Postgres postgres, string address) : IDisposable
     {
+        public Postgres Postgres => postgres;
+
         public Task Reset() => postgres.Reset(CancellationToken.None);
+
+        public Task Arm() => postgres.Arm(CancellationToken.None);
+
+        public async Task<PostgresException?> Attempt(string sql)
+        {
+            try
+            {
+                await Apply(sql);
+                return null;
+            }
+            catch (PostgresException e)
+            {
+                return e;
+            }
+        }
+
+        public async Task<PostgresException?> Transaction(params string[] statements)
+        {
+            await using var connection = new NpgsqlConnection(address);
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            foreach (var statement in statements)
+            {
+                await using var command = new NpgsqlCommand(statement, connection, transaction);
+                await command.ExecuteNonQueryAsync();
+            }
+            try
+            {
+                await transaction.CommitAsync();
+                return null;
+            }
+            catch (PostgresException e)
+            {
+                return e;
+            }
+        }
+
+        public async Task Rolled(string statement)
+        {
+            await using var connection = new NpgsqlConnection(address);
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            await using var command = new NpgsqlCommand(statement, connection, transaction);
+            await command.ExecuteNonQueryAsync();
+            await transaction.RollbackAsync();
+        }
 
         public async Task Apply(string sql)
         {
@@ -196,5 +244,230 @@ public class PostgresTests
             """));
 
         Assert.Equal(PostgresErrorCodes.CheckViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task A_refused_table_refuses_every_write_and_still_reads()
+    {
+        using var database = await Migrated("refuse_all", Seeded);
+
+        await database.Postgres.Refuse("vendors");
+
+        Assert.Equal("specrig: insert on vendors is refused", (await database.Attempt("insert into vendors (state_id, name) values (1, 'R2')"))?.MessageText);
+        Assert.Equal("specrig: update on vendors is refused", (await database.Attempt("update vendors set name = 'renamed'"))?.MessageText);
+        Assert.Equal("specrig: delete on vendors is refused", (await database.Attempt("delete from vendors"))?.MessageText);
+        Assert.Equal(["R1"], await database.Column<string>("select name from vendors"));
+    }
+
+    [Fact]
+    public async Task A_write_that_returns_rows_is_refused_too()
+    {
+        using var database = await Migrated("refuse_returning", Seeded);
+        await database.Postgres.Refuse("states");
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() => database.Column<int>("insert into states (name) values ('extra') returning id"));
+
+        Assert.Equal("specrig: insert on states is refused", refused.MessageText);
+    }
+
+    [Fact]
+    public async Task A_refusal_leaves_the_other_tables_alone()
+    {
+        using var database = await Migrated("refuse_elsewhere", Seeded);
+
+        await database.Postgres.Refuse("vendors");
+
+        Assert.Null(await database.Attempt("insert into states (name) values ('extra')"));
+    }
+
+    [Fact]
+    public async Task A_refusal_leaves_the_writes_it_does_not_name_alone()
+    {
+        using var database = await Migrated("refuse_named", Seeded);
+
+        await database.Postgres.Refuse("vendors", Write.Delete);
+
+        Assert.Null(await database.Attempt("update vendors set name = 'renamed'"));
+        Assert.Equal("specrig: delete on vendors is refused", (await database.Attempt("delete from vendors"))?.MessageText);
+    }
+
+    [Fact]
+    public async Task A_table_in_a_schema_of_its_own_is_named_with_it()
+    {
+        using var database = await Migrated("refuse_schema", "create schema shop; create table shop.\"Orders\" (id int)");
+
+        await database.Postgres.Refuse("shop.Orders", Write.Insert);
+
+        Assert.Equal("specrig: insert on Orders is refused", (await database.Attempt("insert into shop.\"Orders\" values (1)"))?.MessageText);
+    }
+
+    [Fact]
+    public async Task A_table_that_is_not_there_is_named_in_the_failure()
+    {
+        using var database = await Migrated("refuse_missing", Seeded);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => database.Postgres.Refuse("nowhere"));
+
+        Assert.Equal("postgres: cannot refuse writes to nowhere: relation \"nowhere\" does not exist", refused.Message);
+    }
+
+    [Fact]
+    public async Task Only_a_write_can_be_refused()
+    {
+        var postgres = new Postgres("ConnectionStrings:Shop");
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => postgres.Refuse("vendors", (Write)3));
+    }
+
+    [Fact]
+    public async Task A_quota_lets_that_many_rows_through()
+    {
+        using var database = await Migrated("refuse_quota", Seeded);
+
+        await database.Postgres.RefuseAfter("states", 1);
+
+        Assert.Null(await database.Attempt("insert into states (name) values ('first')"));
+        Assert.Equal("specrig: insert on states is refused", (await database.Attempt("insert into states (name) values ('second')"))?.MessageText);
+    }
+
+    [Fact]
+    public async Task A_quota_counts_the_rows_of_a_statement()
+    {
+        using var database = await Migrated("refuse_rows", Seeded);
+        await database.Postgres.RefuseAfter("states", 2, Write.Insert);
+
+        var refused = await database.Attempt("insert into states (name) values ('first'), ('second'), ('third')");
+
+        Assert.NotNull(refused);
+        Assert.Equal(["new", "active", "closed"], await database.Column<string>("select name from states order by id"));
+    }
+
+    [Fact]
+    public async Task A_rolled_back_row_gives_its_place_back()
+    {
+        using var database = await Migrated("refuse_rolled", Seeded);
+        await database.Postgres.RefuseAfter("states", 1);
+
+        await database.Rolled("insert into states (name) values ('undone')");
+
+        Assert.Null(await database.Attempt("insert into states (name) values ('kept')"));
+    }
+
+    [Fact]
+    public async Task Refusing_again_replaces_the_quota()
+    {
+        using var database = await Migrated("refuse_again", Seeded);
+        await database.Postgres.Refuse("states");
+
+        await database.Postgres.RefuseAfter("states", 1);
+
+        Assert.Null(await database.Attempt("insert into states (name) values ('first')"));
+    }
+
+    [Fact]
+    public async Task A_commit_refusal_lets_the_statements_through_and_fails_the_commit()
+    {
+        using var database = await Migrated("refuse_commit", Seeded);
+        await database.Postgres.RefuseCommit("states");
+
+        var refused = await database.Transaction("insert into states (name) values ('extra')");
+
+        Assert.Equal("specrig: insert on states is refused", refused?.MessageText);
+        Assert.Equal(["new", "active", "closed"], await database.Column<string>("select name from states order by id"));
+    }
+
+    [Fact]
+    public async Task A_commit_refusal_leaves_a_transaction_that_did_not_write_the_table_alone()
+    {
+        using var database = await Migrated("refuse_commit_elsewhere", Seeded);
+        await database.Postgres.RefuseCommit("states");
+
+        var refused = await database.Transaction("select name from states", "insert into vendors (state_id, name) values (1, 'R2')");
+
+        Assert.Null(refused);
+    }
+
+    [Fact]
+    public async Task A_refusal_set_before_the_boot_waits_for_the_start()
+    {
+        using var postgres = new Postgres("ConnectionStrings:Shop");
+        await postgres.Refuse("vendors", Write.Insert);
+        using var database = new Database(postgres, await postgres.Provision("refuse_early", CancellationToken.None));
+        await database.Apply(Seeded);
+        await using var services = new ServiceCollection().BuildServiceProvider();
+        await postgres.Migrate(services, CancellationToken.None);
+        await database.Reset();
+        Assert.Null(await database.Attempt("insert into vendors (state_id, name) values (1, 'R2')"));
+
+        await database.Arm();
+
+        Assert.Equal("specrig: insert on vendors is refused", (await database.Attempt("insert into vendors (state_id, name) values (1, 'R3')"))?.MessageText);
+        Assert.Equal(["R1", "R2"], await database.Column<string>("select name from vendors order by id"));
+    }
+
+    [Fact]
+    public async Task A_fault_set_before_the_boot_waits_for_the_start()
+    {
+        using var postgres = new Postgres("ConnectionStrings:Shop");
+        postgres.FailWith(null);
+        using var database = new Database(postgres, await postgres.Provision("fail_early", CancellationToken.None));
+        await database.Apply(Seeded);
+        await using var services = new ServiceCollection().BuildServiceProvider();
+        await postgres.Migrate(services, CancellationToken.None);
+        await database.Reset();
+        Assert.Equal(["R1"], await database.Column<string>("select name from vendors"));
+
+        await database.Arm();
+
+        await Assert.ThrowsAnyAsync<NpgsqlException>(() => database.Apply("select 1"));
+    }
+
+    [Fact]
+    public async Task A_reset_lifts_the_refusals()
+    {
+        using var database = await Migrated("refuse_reset", Seeded);
+        await database.Postgres.Refuse("vendors");
+        await database.Postgres.RefuseCommit("states");
+
+        await database.Reset();
+
+        Assert.Null(await database.Attempt("insert into vendors (state_id, name) values (1, 'R2')"));
+        Assert.Null(await database.Transaction("insert into states (name) values ('extra')"));
+        Assert.Equal([false], await database.Column<bool>("select exists (select 1 from pg_namespace where nspname = 'specrig_refusal')"));
+    }
+
+    [Fact]
+    public async Task A_heal_lifts_the_refusals_and_the_fault_and_keeps_the_rows()
+    {
+        using var database = await Migrated("refuse_heal", Seeded);
+        await database.Arm();
+        await database.Apply("insert into states (name) values ('extra')");
+        await database.Postgres.Refuse("vendors");
+        database.Postgres.FailWith(null);
+        await Assert.ThrowsAnyAsync<NpgsqlException>(() => database.Apply("select 1"));
+
+        await database.Postgres.Heal();
+
+        Assert.Null(await database.Attempt("insert into vendors (state_id, name) values (1, 'R2')"));
+        Assert.Equal(["new", "active", "closed", "extra"], await database.Column<string>("select name from states order by id"));
+    }
+
+    [Fact]
+    public async Task A_heal_before_the_boot_drops_what_was_waiting_for_it()
+    {
+        using var postgres = new Postgres("ConnectionStrings:Shop");
+        await postgres.Refuse("vendors");
+        postgres.FailWith(null);
+        using var database = new Database(postgres, await postgres.Provision("refuse_heal_early", CancellationToken.None));
+        await database.Apply(Seeded);
+        await using var services = new ServiceCollection().BuildServiceProvider();
+        await postgres.Migrate(services, CancellationToken.None);
+
+        await postgres.Heal();
+        await postgres.Reset(CancellationToken.None);
+        await postgres.Arm(CancellationToken.None);
+
+        Assert.Null(await database.Attempt("insert into vendors (state_id, name) values (1, 'R2')"));
+        Assert.Equal(["R1", "R2"], await database.Column<string>("select name from vendors order by id"));
     }
 }
