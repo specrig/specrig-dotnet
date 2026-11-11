@@ -85,10 +85,13 @@ verdict out, which the plugin runs against the rules every stack prints.
 | inbound gRPC | the same middleware, by the request's path: the body copied as the server reads it, so a stream is not waited on, decoded by the request type's own parser; the refusal from the trailers, the reason from the rich status's `ErrorInfo` |
 | settings | `Program`'s command line, which the default builders read last, so the answers win over `appsettings.json` and the environment even for what `Program` reads before it builds the host; the keys the code reads come from the same Roslyn pass as `surface`, written to `tests/checks.yaml` |
 | resources | `IResource`: `Provision` before the boot answers its setting, `Configure` sees the container, `Migrate` and `Reset` follow the build and `Seed` the harness's hook after them, all before the host starts, `Arm` follows the start; `Rig.Ending` takes what comes down when the run ends — the Reqnroll hook, or the process exit for any other runner |
-| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; the tables found after migrating, their rows copied aside to `specrig_baseline` and their sequences read; before every case, in one transaction under `session_replication_role = replica`, `TRUNCATE`, the copies inserted back and the sequences set where they stood, the refusals dropped first |
+| Postgres | Testcontainers, a container kept between runs with Testcontainers' reuse, published on loopback alone; a database per process with a mark and a sweep; every EF Core `DbContext`, registered or made by a factory, migrated, or its tables created; the tables found after migrating, their rows copied aside to `specrig_baseline` and their sequences read; before every case, in one transaction under `session_replication_role = replica`, `TRUNCATE`, the copies inserted back and the sequences set where they stood, the refusals dropped first |
+| MySQL | the Postgres shape on `mysql:8.4` through Testcontainers' generic builder, root with no password, published on loopback alone; the mark a `specrig_mark` table's comment, the kept rows `specrig_kept_<n>` tables beside the service's, the connections on the database killed before it is dropped; before every case only what changed: `CHECKSUM TABLE` against the migrated state, `DELETE` and the copies inserted back in one transaction under `foreign_key_checks = 0` and `NO_AUTO_VALUE_ON_ZERO`, the triggers those rows fire dropped first and made again after in `action_order` under their `sql_mode`, with any the migrations made that is missing, `AUTO_INCREMENT` set back where it moved — on a harness connection from MySqlConnector's pool, which resets the session before it hands it out again |
+| SQLite | `test.db` in a temporary directory of the run's own, removed when it ends; the kept rows in `baseline.db` beside it, which only the resetting connection attaches, and `sqlite_sequence` in memory; before every case, in one transaction with foreign keys off on that connection, every trigger dropped and made again around `DELETE`, the copies inserted back and the sequences set where they stood; virtual tables left out |
+| the databases' core | `Specrig.Sql`, which each database package brings: the resource — EF Core's contexts, the fault and the refusals, what waits for the start — and the server half Postgres and MySQL share: a database per process with a mark, the sweep, the drop at the end |
 | Redis | Testcontainers, a container of the run's own, removed when it ends; `FLUSHDB` before every case |
-| a resource that goes down | for Postgres a loopback gate of the case's own, closed for a refusal, so every client fails, beside a connection and a command interceptor on every EF Core context for an error of the step's choosing; `Heal` reopens the gate on its port and clears the error; for Redis a proxy over the container's `IConnectionMultiplexer` and every database and batch it hands out |
-| a table that refuses writes | for Postgres row triggers, which raise in the server for every connection, a counter per trigger in a schema of its own, `specrig_refusal`, beside the baseline's: `RefuseAfter` counts rows down inside the writing transaction, so a rolled back row gives its place back, and `RefuseCommit` is a deferred constraint trigger on the same counter, so the commit is what fails; the reset and `Heal` drop the schema, and the triggers that depend on its function with it |
+| a resource that goes down | for Postgres and MySQL a loopback gate of the case's own, closed for a refusal, so every client fails, beside a connection and a command interceptor on every EF Core context for an error of the step's choosing — for a refusal, Npgsql's exception over a refused socket, and for MySQL whatever the service's own driver throws at the closed gate, learnt by trying it once; SQLite has no gate, and its contexts meet `SqliteException` 14; `Heal` reopens the gate on its port and clears the error; for Redis a proxy over the container's `IConnectionMultiplexer` and every database and batch it hands out |
+| a table that refuses writes | for Postgres row triggers, which raise in the server for every connection, a counter per trigger in a schema of its own, `specrig_refusal`, beside the baseline's: `RefuseAfter` counts rows down inside the writing transaction, so a rolled back row gives its place back, and `RefuseCommit` is a deferred constraint trigger on the same counter, so the commit is what fails; the reset and `Heal` drop the schema, and the triggers that depend on its function with it. For MySQL and SQLite a `BEFORE` trigger per write, `SIGNAL` or `RAISE(ABORT, …)`, counting down a row of a `specrig_refusal` table that the refusal's writes share; MySQL's trigger names are hashed to fit its 64 characters |
 | logs | `AddFakeLogging`: a provider beside the real ones, so a case reads what the production logger built |
 | clock | `TimeProvider` replaced by one that follows the wall clock until a step sets it, a `FakeTimeProvider` from then |
 | steps | Reqnroll: `[BeforeStep]` and its `StepDefinitionType` mark Given, When and Then; the hooks live in `Specrig.Reqnroll`, named in `reqnroll.json` |
@@ -164,6 +167,49 @@ plain SQL. Putting rows back turns foreign keys and triggers off for one
 transaction, which needs a superuser: the container has one, and migrations that
 write no rows need none. A refusal lives in the database, so the reset drops it
 before it puts the rows back, as the Go stack's does.
+
+**One core for the databases.** Postgres, MySQL and SQLite each come in a package
+of their own, so a service carries one driver, over `Specrig.Sql`, which holds
+everything a case does with a database that is not SQL: the contexts, the fault,
+the refusals waiting for the start, the database per process and its sweep. A
+dialect is its SQL and nothing else. Postgres's API and behaviour stayed as they
+were, its tests the proof.
+
+**MySQL resets only what a case changed.** Truncating, a trigger and a counter are
+DDL there. Measured on a laptop through MySqlConnector, `mysql:8.4` under OrbStack:
+`TRUNCATE` 17.6 ms a table, `DELETE` 2.7 ms, `ALTER TABLE … AUTO_INCREMENT` 4.3 ms,
+a trigger dropped and made again 8.4 ms, `CHECKSUM TABLE` over two tables 0.2 ms.
+So the reset compares checksums and touches the rest only where they differ: ~1.6 ms
+when the case changed nothing, ~17 ms after inserts into two tables, ~22 ms when a
+seeded table with an insert trigger changed; Postgres takes ~3.5 ms for any of
+these, SQLite ~0.7 ms. The harness's own connections come from the pool: opening
+one with TLS took 3.8 ms, five of the 6.7 ms an untouched reset took before, and
+MySqlConnector resets a session before it hands it out again, so the checks switched
+off and a trigger's `sql_mode` do not outlive the reset. The pool is the harness's
+alone, since the service connects through the gate.
+
+**No `RefuseCommit` on MySQL or SQLite.** MySQL has no deferred constraint at all.
+The only thing that fails an SQLite commit on demand is a deferred foreign key, which
+the driver reports as `FOREIGN KEY constraint failed`, so the case would test the
+service's conflict branch instead of a failed commit. The method is absent from
+the two types rather than one that throws.
+
+**EF Core 8 is the floor.** Pomelo's MySQL provider stops at EF Core 9, so the
+database packages declare the 8.0 line, the long-term one, at the first release
+NuGet's audit lets through: EF Core 8.0.10, which no longer brings
+`Microsoft.Extensions.Caching.Memory` 8.0.0, with Npgsql 8.0.5 and
+`Microsoft.Data.Sqlite` 8.0.10 beside it, the drivers EF Core 8's providers bring.
+EF Core 8 has no `ConfigureDbContext`, so the interceptors go in by wrapping the
+registered `DbContextOptions<TContext>`. The tests run the services on the newest
+providers — Npgsql's 10.0.3 on the EF Core 10.0.4 it needs, SQLite's 10.0.15, Pomelo
+9.0.0 on EF Core 9 — and, with `-p:Floors=true`, on the 8.0.10 line, Pomelo 8.0.2.
+
+**A refused MySQL connection is the driver's own.** A service on EF Core 10 reaches
+MySQL through Oracle's `MySql.EntityFrameworkCore` and `MySql.Data`, whose
+`MySqlException` is not MySqlConnector's. Rather than build one of them, a context's first open after
+`FailWith(null)` tries the closed gate with a connection of the context's own type,
+and what it throws is what every open and command throws until `Heal`. The type is
+`Mysql`, not `MySql`, because `MySql.Data` declares a namespace of that name.
 
 **The resources are ready before the service starts.** A start may read its
 database, and `Program` may do it right after `Build`: a hosted service that

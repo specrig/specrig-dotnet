@@ -14,6 +14,9 @@ generate:
 test:
 	dotnet test Specrig.slnx
 
+test-floors:
+	dotnet test Specrig.slnx -p:Floors=true
+
 # Without the .NET SDK, and in CI. The resources start their containers beside this
 # one, through the host's Docker, and are reached at the ports it publishes them on.
 DOCKER := docker run --rm -v $(CURDIR):/repo -v specrig-dotnet-nuget:/root/.nuget/packages \
@@ -33,4 +36,4 @@ protocol:
 		$(PROTOCOL)/modes.yaml $(PROTOCOL)/specrig-md.md $(PROTOCOL)/agents protocol/
 	cp -R $(PROTOCOL)/fixtures/records $(PROTOCOL)/fixtures/agents $(PROTOCOL)/fixtures/markers protocol/fixtures/
 
-.PHONY: build generate test generate-docker test-docker protocol
+.PHONY: build generate test test-floors generate-docker test-docker protocol

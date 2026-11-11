@@ -26,7 +26,7 @@ static class Templates
         yield return "Specrig.Reqnroll";
         foreach (var kind in plan.Resources.Select(r => r.Kind).Distinct())
         {
-            yield return kind switch { "RabbitBus" => "Specrig.RabbitMQ", var other => $"Specrig.{other}" };
+            yield return kind switch { "RabbitBus" => "Specrig.RabbitMQ", "Mysql" => "Specrig.MySql", var other => $"Specrig.{other}" };
         }
         if (plan.Grpc)
         {
@@ -242,8 +242,8 @@ static class Templates
                 halfway is not an outage: `harness.<Database>.Refuse(table)` makes one table
                 refuse writes, `RefuseAfter(table, rows)` lets that many rows through first, and
                 reads keep working, so a `Then` can check what the failed write left;
-                `RefuseCommit(table)` fails only the commit. `Heal()` is the database coming
-                back: it ends the fault and every refusal and keeps the rows.
+                `RefuseCommit(table)`, on Postgres, fails only the commit. `Heal()` is the
+                database coming back: it ends the fault and every refusal and keeps the rows.
 
                 **What may be stood in for is given, not chosen.** `tests/internal/` is
                 read-only. A case that needs another neighbour, or an answer the stand-in cannot

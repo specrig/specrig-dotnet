@@ -1,7 +1,7 @@
 # specrig.md
 
 How an agent works in this service under specrig: Rule #11, and how the suite runs.
-`dotnet run --project ../../src/Specrig.Tool -- agents` writes this file with `Specrig.Tool` 0.3.1, and an edit here is lost on the next
+`dotnet run --project ../../src/Specrig.Tool -- agents` writes this file with `Specrig.Tool` 0.3.2, and an edit here is lost on the next
 run; `AGENTS.md` beside it is the service's own.
 
 **Read `CONTRIBUTING.md` first, if it exists.** It holds service-specific
@@ -441,8 +441,8 @@ database, the cache or the bus away until the next case. A write that fails
 halfway is not an outage: `harness.<Database>.Refuse(table)` makes one table
 refuse writes, `RefuseAfter(table, rows)` lets that many rows through first, and
 reads keep working, so a `Then` can check what the failed write left;
-`RefuseCommit(table)` fails only the commit. `Heal()` is the database coming
-back: it ends the fault and every refusal and keeps the rows.
+`RefuseCommit(table)`, on Postgres, fails only the commit. `Heal()` is the
+database coming back: it ends the fault and every refusal and keeps the rows.
 
 **What may be stood in for is given, not chosen.** `tests/internal/` is
 read-only. A case that needs another neighbour, or an answer the stand-in cannot

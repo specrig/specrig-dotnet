@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>What the specrig database resources share: every EF Core context migrated, a fault and refused writes of a case's own, and a database of the run's own on a kept server.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Specrig.Hosting/Specrig.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Specrig.Postgres" />
+    <InternalsVisibleTo Include="Specrig.MySql" />
+    <InternalsVisibleTo Include="Specrig.Sqlite" />
+    <InternalsVisibleTo Include="Specrig.Hosting.Tests" />
+    <InternalsVisibleTo Include="Specrig.MySql.Tests" />
+    <InternalsVisibleTo Include="Specrig.Sqlite.Tests" />
+  </ItemGroup>
+</Project>

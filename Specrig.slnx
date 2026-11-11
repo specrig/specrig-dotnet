@@ -3,7 +3,10 @@
     <Project Path="src/Specrig/Specrig.csproj" />
     <Project Path="src/Specrig.Hosting/Specrig.Hosting.csproj" />
     <Project Path="src/Specrig.Reqnroll/Specrig.Reqnroll.csproj" />
+    <Project Path="src/Specrig.Sql/Specrig.Sql.csproj" />
     <Project Path="src/Specrig.Postgres/Specrig.Postgres.csproj" />
+    <Project Path="src/Specrig.MySql/Specrig.MySql.csproj" />
+    <Project Path="src/Specrig.Sqlite/Specrig.Sqlite.csproj" />
     <Project Path="src/Specrig.RabbitMQ/Specrig.RabbitMQ.csproj" />
     <Project Path="src/Specrig.Redis/Specrig.Redis.csproj" />
     <Project Path="src/Specrig.Grpc/Specrig.Grpc.csproj" />
@@ -14,6 +17,8 @@
   <Folder Name="/test/">
     <Project Path="test/Specrig.Tests/Specrig.Tests.csproj" />
     <Project Path="test/Specrig.Hosting.Tests/Specrig.Hosting.Tests.csproj" />
+    <Project Path="test/Specrig.MySql.Tests/Specrig.MySql.Tests.csproj" />
+    <Project Path="test/Specrig.Sqlite.Tests/Specrig.Sqlite.Tests.csproj" />
     <Project Path="test/Specrig.RabbitMQ.Tests/Specrig.RabbitMQ.Tests.csproj" />
     <Project Path="test/Specrig.Redis.Tests/Specrig.Redis.Tests.csproj" />
     <Project Path="test/Specrig.Surface.Tests/Specrig.Surface.Tests.csproj" />

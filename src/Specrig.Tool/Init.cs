@@ -136,7 +136,10 @@ static class Init
             var name = key["ConnectionStrings:".Length..].ToLowerInvariant();
             var kind = name.Contains("rabbit") || name.Contains("amqp") || name.Contains("bus") ? Uses("RabbitMQ.Client") ? "RabbitBus" : null
                 : name.Contains("redis") || name.Contains("cache") ? Uses("StackExchange.Redis") ? "Redis" : null
-                : Uses("Npgsql") ? "Postgres" : null;
+                : Uses("Npgsql") ? "Postgres"
+                : Uses("MySql") || Uses("Pomelo.EntityFrameworkCore.MySql") ? "Mysql"
+                : Uses("Microsoft.Data.Sqlite") || Uses("Microsoft.EntityFrameworkCore.Sqlite") ? "Sqlite"
+                : null;
             if (kind is not null)
             {
                 var property = kind switch { "RabbitBus" => "Bus", "Redis" => "Cache", _ => "Database" };

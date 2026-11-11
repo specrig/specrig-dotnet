@@ -234,6 +234,39 @@ public class InitTests
             refused.Message);
     }
 
+    [Theory]
+    [InlineData("MySqlConnector", "Mysql", "Specrig.MySql")]
+    [InlineData("Microsoft.EntityFrameworkCore.Sqlite", "Sqlite", "Specrig.Sqlite")]
+    public async Task Init_makes_a_connection_string_the_database_its_driver_reaches(string driver, string kind, string package)
+    {
+        var service = Path.Combine(work, "ledger");
+        Directory.CreateDirectory(Path.Combine(service, "src"));
+        File.WriteAllText(Path.Combine(service, "src", "Ledger.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.Extensions.Hosting" />
+                <PackageReference Include="{driver}" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(service, "src", "Program.cs"), """
+            using Microsoft.Extensions.Configuration;
+            using Microsoft.Extensions.Hosting;
+
+            var builder = Host.CreateApplicationBuilder(args);
+            Console.WriteLine(builder.Configuration.GetConnectionString("Ledger"));
+            builder.Build().Run();
+            """);
+
+        Assert.Equal(0, await Init.Run([service]));
+
+        Assert.Contains($"public {kind} Database {{ get; }} = new(\"ConnectionStrings:Ledger\");", Read(service, "tests/internal/Harness.cs"));
+        Assert.Contains($"$(SpecrigCheckout)/src/{package}/{package}.csproj", Read(service, "tests/Specs.csproj"));
+    }
+
     [Fact]
     public async Task Init_refuses_a_service_whose_http_neighbour_goes_unnamed()
     {

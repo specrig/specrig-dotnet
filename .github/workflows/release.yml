@@ -21,6 +21,7 @@ jobs:
       - name: the tag is the packages' version
         run: test "v$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props)" = "$GITHUB_REF_NAME"
       - run: make test
+      - run: make test-floors
       - name: pack
         run: |
           for project in src/*/*.csproj; do

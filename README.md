@@ -8,7 +8,8 @@ of them in one host.
 
 **Status: built.** Everything below runs green on two samples — a web API over
 Postgres, serving and calling gRPC, and a worker with no server over RabbitMQ and
-Quartz. [docs/design.md](docs/design.md) has what each part is built from and why;
+Quartz; MySQL and SQLite on their packages' own tests, against a real server and a
+real file. [docs/design.md](docs/design.md) has what each part is built from and why;
 what every specrig stack agrees on — the records, the modes, the text of
 `specrig.md` — is the [specrig protocol](https://github.com/specrig/protocol), a
 copy of which is in [protocol/](protocol).
@@ -70,7 +71,8 @@ copy of which is in [protocol/](protocol).
 | `Specrig.RabbitMQ` | events in and out over `RabbitMQ.Client`, in process: what the service publishes is recorded, and a delivery is routed by the bindings the service made |
 | `Specrig.Quartz` | a Quartz job run as the scheduler runs it, with the detail the service registered |
 | `Specrig.Reqnroll` | binds the harness to Reqnroll: the step a record belongs to, the checks after a case, `tests/flows.yaml` after a run |
-| `Specrig.Postgres`, `Specrig.Redis` | resources: a real system, provisioned once per run and put back before every case — Postgres as its migrations left it, Redis empty |
+| `Specrig.Postgres`, `Specrig.MySql`, `Specrig.Sqlite`, `Specrig.Redis` | resources: a real system, provisioned once per run and put back before every case — a database as its migrations left it, Redis empty |
+| `Specrig.Sql` | what the three databases share — the EF Core migration, the fault, the refusals, a database of the run's own and its sweep; comes with each of them |
 | `Specrig.Surface` | the Roslyn pass behind `tests/surface.yaml` and `tests/checks.yaml` |
 | `Specrig.Tool` | the dotnet tool `specrig`: `init`, `surface`, `agents`, and `rules` of the protocol's rules/1 |
 
@@ -99,8 +101,9 @@ lone gRPC neighbour serves every gRPC service the code calls; with more than one
 `--serves` says which are whose, by package or by service, since a generated
 client does not say whose it is. A call no neighbour takes is refused, named. A
 connection string whose provider specrig has a resource or a bus for becomes it —
-Npgsql a `Postgres`, StackExchange.Redis a `Redis`, RabbitMQ.Client a `RabbitBus`
-— and the hosted services that bind a queue go into `Running`. Every other
+Npgsql a `Postgres`; MySqlConnector, Pomelo's provider or Oracle's `MySql.*` a
+`Mysql`; `Microsoft.Data.Sqlite` or EF Core's SQLite provider a `Sqlite`;
+StackExchange.Redis a `Redis`, RabbitMQ.Client a `RabbitBus` — and the hosted services that bind a queue go into `Running`. Every other
 setting the code reads and `appsettings.json` does not answer becomes a constant
 the harness answers empty.
 
@@ -250,10 +253,10 @@ The other ways in are steps of the same shape: `harness.Http.GetAsync(...)`,
 | `harness.Logs` | what the service logged, collected under its real logger |
 | `harness.Clock` | the service's `TimeProvider`: it runs with the wall clock until a step sets it |
 | `harness.<Resource>.FailWith(error?)` | the resource refuses every client it handed out, until the next case |
-| `harness.Database.Heal()` | Postgres comes back mid-case: `FailWith` ends and every refusal below is lifted, the rows stay |
-| `harness.Database.Refuse(table, writes?)` | every insert, update or delete of the table, or only those named, fails in Postgres itself, for every connection, the case's own included; reads work |
+| `harness.Database.Heal()` | the database comes back mid-case: `FailWith` ends and every refusal below is lifted, the rows stay |
+| `harness.Database.Refuse(table, writes?)` | every insert, update or delete of the table, or only those named, fails in the database itself, for every connection, the case's own included; reads work |
 | `harness.Database.RefuseAfter(table, rows, writes?)` | the same after the first `rows` rows have gone through |
-| `harness.Database.RefuseCommit(table, writes?)` | the statements go through and the commit of a transaction that wrote the table fails |
+| `harness.Database.RefuseCommit(table, writes?)` | Postgres only: the statements go through and the commit of a transaction that wrote the table fails |
 | `harness.Bus.FailWith(error?)` | publishing throws what a closed connection throws, or the error given, until the next case |
 
 A path in braces — `/orders/{id}` — takes any one segment wherever a step names a
@@ -265,7 +268,7 @@ The service boots at the first step that reaches it, so a `Given` declares and
 replaces before anything is built. Each case boots a service of its own: a
 singleton holding state does not carry it into the next case. The resources are
 provisioned once per run and put back before every case, before the service
-starts: Postgres as its migrations left it, Redis empty.
+starts: a database as its migrations left it, Redis empty.
 
 A call no step answered gets a 501, or `Unimplemented` over gRPC, and fails the
 case, named. After the case, every request and every answer is checked against the
@@ -319,7 +322,7 @@ public sealed class Harness : Specrig.Harness<Program>
 |---|---|
 | a `Backend` property | an HTTP neighbour: its origin, the setting that points the service at it, its OpenAPI document, the schema of its 5xx |
 | a `GrpcBackend` property | a gRPC neighbour: its origin, the setting, and the descriptors of the services it serves there, which are the contract it answers by. A step names a method by its name, or as `Service.Method` or `package.Service.Method` where two of its services share the name |
-| a resource property | a real system, `Postgres` or `Redis`, and the setting that receives its address |
+| a resource property | a real system, `Postgres`, `Mysql`, `Sqlite` or `Redis`, and the setting that receives its address |
 | a `RabbitBus` property | the broker, stood in for in process in place of the `IConnectionFactory` or `IConnection` the container holds, and the setting that holds its connection string, answered with an unroutable address |
 | `Constants` | the other settings the harness answers, as given |
 | `Allow` | the services of the container a case may replace |
@@ -437,6 +440,83 @@ schema is named with it, `shop.orders`. A refusal a step sets before the boot
 waits for the start like a fault. Refusals are triggers in a schema of their own,
 `specrig_refusal`, which table discovery and the baseline never see; `Heal()` and
 the reset before the next case drop them.
+
+## MySQL
+
+```csharp
+public Mysql Database { get; } = new("ConnectionStrings:Shop");
+```
+
+`Mysql`, not `MySql`: that is a namespace of Oracle's `MySql.Data`, and a service
+that has it would not compile `MySql` as a type. Everything above holds, with the
+address in `<SERVICE>_TEST_MYSQL`, but two things. There is no `RefuseCommit`:
+MySQL has no deferred constraint to fail a commit with. And a refused table is
+named alone, `orders`: a schema in MySQL is a database, and the service's is the
+run's own.
+
+The container is `mysql:8.4`, `Image` to change it: root with no password,
+published on loopback alone, kept between runs like Postgres's. MySQL keeps no
+comment on a database, so specrig's mark is the comment of a `specrig_mark` table in
+it, and the rows the migrations left wait in `specrig_kept_<n>` tables beside the
+service's; table discovery leaves every `specrig_` table out. At the end of the run
+the connections still on the database are killed before it is dropped, since there
+is no `WITH (FORCE)` and a transaction left open would hold the drop for good.
+
+Truncating, a trigger and a counter are DDL in MySQL, a few milliseconds each, so
+a reset touches only what the case changed. It compares every table's `CHECKSUM
+TABLE` with the migrated state; the tables that differ are emptied with `DELETE`
+and refilled in one transaction with foreign key checks off, a row at id 0 put back
+at 0; the insert and delete triggers those rows would fire are dropped first and
+made again after it, in the order they fire, under the `sql_mode` they were made
+under, and a trigger a failed reset lost is made again by the next one; an
+`AUTO_INCREMENT` the case moved is set back. Measured on a laptop, five tables:
+
+| | per reset |
+|---|---|
+| nothing changed | ~1.6 ms |
+| two tables, two inserts | ~17 ms |
+| a seeded table with an insert trigger | ~22 ms |
+| Postgres, any of these | ~3.5 ms |
+
+`FailWith(null)` closes the gate as for Postgres, and an EF Core context meets what
+its own driver throws at a refused connection — MySqlConnector's or Oracle's
+`MySqlException`, `Unable to connect to any of the specified MySQL hosts` —
+learnt by trying the closed gate once; Pomelo's execution strategy wraps it as a
+transient failure, as it would a database that is down. A refusal is a `BEFORE` trigger for each
+write named, raising `specrig: insert on orders is refused` with `SIGNAL`, and a
+row in a `specrig_refusal` table counts down the rows the refusal lets through.
+
+A service reaches MySQL through Pomelo's EF Core provider, on EF Core 8 or 9, or
+through Oracle's `MySql.EntityFrameworkCore`, the one there is for EF Core 10;
+specrig itself talks MySqlConnector, and either driver in the service meets the
+same database.
+
+## SQLite
+
+```csharp
+public Sqlite Database { get; } = new("ConnectionStrings:Shop");
+```
+
+There is no address and no container: the database is a file in a directory of
+the run's own under the system's temporary one, created at the first boot and
+removed when the run ends. A file costs nothing to make, so nothing is kept between
+runs, nothing is shared between processes, and there is no sweep. The connection
+string the service gets checks foreign keys.
+
+The rows the migrations left wait in a second file that only the resetting
+connection attaches, and `sqlite_sequence` as it stood is kept in memory. SQLite
+cannot switch a trigger off, so the reset drops every trigger and makes it again
+inside its one transaction, with foreign keys off on that connection alone. A
+virtual table — FTS5, R*Tree — is not put back: its rows stay as the case left
+them.
+
+`FailWith(null)` makes every EF Core context meet `SqliteException` 14, `unable to
+open database file`; a file has no gate, so a client past EF Core does not see the
+fault. A refusal is a `BEFORE` trigger that raises `specrig: insert on orders is
+refused` with `RAISE(ABORT, …)`, counted down as on MySQL. There is no
+`RefuseCommit`: the only thing that fails an SQLite commit on demand is a deferred
+foreign key, which the driver reports as `FOREIGN KEY constraint failed`, so a
+case would test the service's conflict branch instead of a failed commit.
 
 ## Redis
 
@@ -595,14 +675,18 @@ are let through, and the plugin says so once.
   naming it, and so does a headers exchange.
 - Quartz is the scheduler with an adapter; any other job runs by its `RunAsync`,
   `ExecuteAsync`, `Run` or `Execute`.
-- `Postgres` and `Redis` are the resources there are. Anything else is a resource
+- `Postgres`, `Mysql`, `Sqlite` and `Redis` are the resources there are. Anything else is a resource
   of the service's own, an `IResource`: `Provision`, `Configure`, `Migrate`,
   `Reset` and `Arm`, where what a step set before the boot takes effect once the
   host has started, every one called in every case, and once per run the
   resource's own to keep.
 - The database is migrated through EF Core alone; another migration tool is not
-  run. A fault other than a refusal reaches EF Core's contexts alone. A refusal is
-  a trigger on the table's rows, so a `TRUNCATE` goes through it.
+  run. A fault other than a refusal reaches EF Core's contexts alone, and on SQLite
+  a refusal does too. A refusal is a trigger on the table's rows, so a `TRUNCATE`
+  goes through it.
+- The database packages need EF Core 8.0.10 or newer, Npgsql 8.0.5 and
+  Microsoft.Data.Sqlite 8.0.10: the first 8.0 releases NuGet's audit lets
+  through.
 - `tests/surface.yaml` reads what the table above names: a request through a
   library it does not, MassTransit or Kafka say, is not in it.
 - A description that lost its anchor fails the run with an assembly cleanup
@@ -630,10 +714,23 @@ over RabbitMQ with a Quartz job and a command — which rewrite their
 for a machine without the SDK.
 
 ```bash
+make test-floors
+```
+
+runs the tests again with the services on the EF Core the database packages
+declare as their floor, where `make test` gives them the newest providers. The MySQL tests
+reach the database through Pomelo, on EF Core 8 here and 9 there: it has no
+release for EF Core 10.
+
+```bash
 docker rm -f $(docker ps -aq --filter label=specrig=postgres)
 ```
 
-removes the kept Postgres container.
+```bash
+docker rm -f $(docker ps -aq --filter label=specrig=mysql)
+```
+
+remove the kept Postgres and MySQL containers.
 
 ```bash
 make protocol

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>SQLite as a specrig resource: a database file of the run's own, put back before every case as its migrations left it.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Specrig.Sql/Specrig.Sql.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Specrig.Sqlite.Tests" />
+  </ItemGroup>
+</Project>
